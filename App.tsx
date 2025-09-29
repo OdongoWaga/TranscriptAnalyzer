@@ -6,8 +6,10 @@ import { StatusBar } from 'expo-status-bar';
 
 import HomeScreen from './src/screens/HomeScreen';
 import ResultScreen from './src/screens/ResultScreen';
+import BlueScreen from './src/screens/BlueScreen';
+import { RootStackParamList } from './src/types/navigation';
 
-const Stack = createStackNavigator();
+const Stack = createStackNavigator<RootStackParamList>();
 
 export default function App() {
   return (
@@ -35,6 +37,11 @@ export default function App() {
             name="Result" 
             component={ResultScreen} 
             options={{ title: 'Analysis Results' }}
+          />
+          <Stack.Screen 
+            name="Blue" 
+            component={BlueScreen} 
+            options={{ title: 'Voice Transcription' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

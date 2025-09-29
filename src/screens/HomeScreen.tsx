@@ -18,6 +18,7 @@ import {
 } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { RootStackParamList } from '../types/navigation';
 
 import { ImagePickerService } from '../services/imagePickerService';
 import { GeminiService } from '../services/geminiService';
@@ -25,10 +26,7 @@ import { AnalysisResult } from '../types';
 import ZoomableImageView from '../components/ZoomableImageView';
 import ImageEditor from '../components/ImageEditor';
 
-type RootStackParamList = {
-  Home: undefined;
-  Result: { result: AnalysisResult };
-};
+// Using shared RootStackParamList
 
 type HomeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Home'>;
 
@@ -294,6 +292,15 @@ export default function HomeScreen({ navigation }: Props) {
                   )}
                 </Button>
               )}
+
+              <Button
+                mode="outlined"
+                onPress={() => navigation.navigate('Blue')}
+                style={[styles.testButton, { marginTop: 8 }]}
+                icon="arrow-right"
+              >
+                Go to Blue Page
+              </Button>
 
               <Button
                 mode="outlined"

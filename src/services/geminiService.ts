@@ -1,5 +1,5 @@
 import axios from 'axios';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { AnalysisResult, TranscriptAnalysis } from '../types';
 import { CONFIG, getGeminiApiKey } from '../config/env';
 
@@ -67,16 +67,20 @@ export class GeminiService {
     try {
       // Get file info to check size
       const fileInfo = await FileSystem.getInfoAsync(imageUri);
-      console.log('Image file size:', fileInfo.size, 'bytes');
+      const fileSize = (fileInfo as any)?.size as number | undefined;
+      if (fileSize != null) {
+        console.log('Image file size:', fileSize, 'bytes');
+      }
       
       // Check if file is too large (max 4MB for API)
-      if (fileInfo.size && fileInfo.size > CONFIG.MAX_IMAGE_SIZE) {
+      if (fileSize && fileSize > CONFIG.MAX_IMAGE_SIZE) {
         console.warn('Image is too large, attempting to compress...');
         // For now, we'll proceed but warn the user
       }
       
       const base64 = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: FileSystem.EncodingType.Base64,
+        // EncodingType enum moved; string literal is supported in SDK 54
+        encoding: 'base64' as any,
       });
       
       console.log('Base64 encoded image size:', base64.length, 'characters');
@@ -240,6 +244,149 @@ Extract all visible course information accurately. If information is not clear, 
         error: errorMessage,
         rawResponse: errorDetails
       };
+    }
+  }
+
+  // Send audio file to Gemini API for transcription
+  public static async transcribeAudio(audioUri: string): Promise<{ success: boolean; transcript?: string; error?: string }> {
+    try {
+      console.log('Starting audio transcription for:', audioUri);
+      
+      // Determine MIME type based on file extension
+      let mimeType = 'audio/wav';
+      if (audioUri.includes('.m4a')) {
+        mimeType = 'audio/mp4';
+      } else if (audioUri.includes('.mp3')) {
+        mimeType = 'audio/mpeg';
+      } else if (audioUri.includes('.aac')) {
+        mimeType = 'audio/aac';
+      }
+      
+      console.log('Detected audio format:', mimeType);
+      
+      // Encode audio to base64
+      const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
+        encoding: 'base64' as any,
+      });
+      
+      console.log('Audio encoded to base64, size:', base64Audio.length, 'characters');
+      
+      const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      const requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                text: "Please transcribe the following audio file. Return only the transcribed text, no additional formatting or commentary."
+              },
+              {
+                inline_data: {
+                  mime_type: mimeType,
+                  data: base64Audio
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 2048,
+        }
+      };
+
+      let response;
+      try {
+        response = await axios.post(apiUrl, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: CONFIG.REQUEST_TIMEOUT,
+        });
+      } catch (error) {
+        // Try fallback model if primary fails
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          console.log('Primary model failed for audio, trying fallback...');
+          const fallbackUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+          const fallbackApiUrl = `${fallbackUrl}?key=${getGeminiApiKey()}`;
+          
+          response = await axios.post(fallbackApiUrl, requestBody, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: CONFIG.REQUEST_TIMEOUT,
+          });
+        } else {
+          throw error;
+        }
+      }
+
+      const transcript = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!transcript) {
+        return {
+          success: false,
+          error: 'No transcription received from API'
+        };
+      }
+
+      console.log('Transcription successful:', transcript.length, 'characters');
+      return {
+        success: true,
+        transcript: transcript.trim()
+      };
+
+    } catch (error) {
+      console.error('Error transcribing audio:', error);
+      
+      let errorMessage = 'Audio transcription failed';
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          errorMessage = `API Error: ${error.response.status} - ${error.response.statusText}`;
+        } else if (error.request) {
+          errorMessage = 'Network Error: No response from server';
+        } else {
+          errorMessage = `Request Error: ${error.message}`;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
+
+      return {
+        success: false,
+        error: errorMessage
+      };
+    }
+  }
+
+  // Send plain text (e.g., on-device STT transcript) to Gemini and get a response string
+  public static async processTranscriptText(transcript: string): Promise<string> {
+    try {
+      const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      const requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                text:
+                  `You will receive a transcript captured via on-device speech recognition.\n` +
+                  `Transcript:\n"""${transcript}"""\n` +
+                  `Provide a concise response or summary. If a task is requested, perform it.`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 512,
+        },
+      };
+
+      const response = await axios.post(apiUrl, requestBody, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: CONFIG.REQUEST_TIMEOUT,
+      });
+
+      return (
+        response.data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+      );
+    } catch (error) {
+      console.error('Error processing transcript text:', error);
+      return '';
     }
   }
 }

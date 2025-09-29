@@ -16,8 +16,11 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSCameraUsageDescription": "This app needs access to camera to take photos of your academic transcript.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to photo library to select images of your academic transcript."
-      }
+        "NSPhotoLibraryUsageDescription": "This app needs access to photo library to select images of your academic transcript.",
+        "NSMicrophoneUsageDescription": "We use the mic to transcribe your speech on device.",
+        "NSSpeechRecognitionUsageDescription": "We use speech recognition to transcribe audio on device."
+      },
+      "bundleIdentifier": "com.anonymous.TranscriptAnalyzer"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +31,8 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -42,6 +46,12 @@
           "cameraPermission": "The app accesses your camera to let you share photos with your friends."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "924919f0-0969-4fa0-b777-536596a3dce8"
+      }
+    },
+    "owner": "wagamama"
   }
 }
