@@ -304,6 +304,15 @@ export default function HomeScreen({ navigation }: Props) {
 
               <Button
                 mode="outlined"
+                onPress={() => navigation.navigate('Dashboard', {})}
+                style={styles.testButton}
+                icon="view-dashboard"
+              >
+                View Dashboard
+              </Button>
+
+              <Button
+                mode="outlined"
                 onPress={handleTestApiConnection}
                 disabled={isAnalyzing}
                 style={styles.testButton}

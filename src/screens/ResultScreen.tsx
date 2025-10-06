@@ -23,6 +23,7 @@ import { AnalysisResult, TranscriptAnalysis, Course } from '../types';
 type RootStackParamList = {
   Home: undefined;
   Result: { result: AnalysisResult };
+  Dashboard: { analysisResult?: AnalysisResult };
 };
 
 type ResultScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Result'>;
@@ -256,6 +257,15 @@ export default function ResultScreen({ navigation, route }: Props) {
             </Button>
             
             <Button
+              mode="contained"
+              onPress={() => navigation.navigate('Dashboard', { analysisResult: result })}
+              style={[styles.actionButton, styles.dashboardButton]}
+              icon="view-dashboard"
+            >
+              View Dashboard
+            </Button>
+            
+            <Button
               mode="outlined"
               onPress={() => navigation.navigate('Home')}
               style={[styles.actionButton, styles.newAnalysisButton]}
@@ -366,6 +376,9 @@ const styles = StyleSheet.create({
   },
   shareButton: {
     backgroundColor: '#2196F3',
+  },
+  dashboardButton: {
+    backgroundColor: '#FF9800',
   },
   newAnalysisButton: {
     borderColor: '#4CAF50',
