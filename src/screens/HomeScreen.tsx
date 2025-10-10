@@ -104,7 +104,7 @@ export default function HomeScreen({ navigation }: Props) {
 
     setIsAnalyzing(true);
     try {
-      const result = await GeminiService.analyzeTranscript(selectedImage);
+      const result = await GeminiService.analyzeActionImage(selectedImage);
       
       if (result.success) {
         navigation.navigate('Result', { result });
@@ -185,16 +185,16 @@ export default function HomeScreen({ navigation }: Props) {
         <View style={styles.content}>
           <Card style={styles.card}>
             <Card.Content>
-              <Title style={styles.title}>Academic Transcript Analyzer</Title>
+              <Title style={styles.title}>Activity Analyzer</Title>
               <Paragraph style={styles.subtitle}>
-                Upload a photo of your academic transcript to extract course information, grades, and GPA using AI.
+                Upload a photo of an activity or action to analyze it using our skills taxonomy framework and discover what skills are being developed.
               </Paragraph>
             </Card.Content>
           </Card>
 
           <Card style={styles.imageCard}>
             <Card.Content>
-              <Title style={styles.sectionTitle}>Upload Transcript Image</Title>
+              <Title style={styles.sectionTitle}>Upload Activity Image</Title>
               
               {selectedImage ? (
                 <View style={styles.imageContainer}>
@@ -284,11 +284,11 @@ export default function HomeScreen({ navigation }: Props) {
                     <View style={styles.loadingContainer}>
                       <ActivityIndicator size="small" color="#fff" />
                       <Paragraph style={styles.loadingText}>
-                        Analyzing transcript...
+                        Analyzing activity...
                       </Paragraph>
                     </View>
                   ) : (
-                    'Analyze Transcript'
+                    'Analyze Activity'
                   )}
                 </Button>
               )}
@@ -304,7 +304,7 @@ export default function HomeScreen({ navigation }: Props) {
 
               <Button
                 mode="outlined"
-                onPress={() => navigation.navigate('Dashboard', {})}
+                onPress={() => navigation.navigate('Dashboard')}
                 style={styles.testButton}
                 icon="view-dashboard"
               >

@@ -389,4 +389,151 @@ Extract all visible course information accurately. If information is not clear, 
       return '';
     }
   }
+
+  // Analyze actions in images using skills taxonomy
+  public static async analyzeActionImage(imageUri: string): Promise<AnalysisResult> {
+    try {
+      const base64Image = await this.encodeImageToBase64(imageUri);
+      
+      const taxonomyPrompt = `
+Analyze this image and identify what action or activity is being performed. Based on what you see, analyze the activity using this skills taxonomy framework:
+
+SKILLS TAXONOMY:
+1. Human Skills: Communication, Collaboration, Leadership, Empathy, Active Listening, Conflict Resolution, Networking, Public Speaking, Team Management
+2. Meta-Learning: Critical Thinking, Research Skills, Self-Reflection, Learning Strategies, Information Synthesis, Knowledge Transfer, Continuous Learning, Adaptability
+3. Maker & Builder: Prototyping, Design Thinking, Craftsmanship, Innovation, Technical Skills, Project Management, Problem Solving, Creative Construction, Engineering
+4. Civic Impact: Community Engagement, Social Responsibility, Advocacy, Volunteer Work, Policy Understanding, Cultural Awareness, Environmental Stewardship, Civic Participation
+5. Creative Expression: Artistic Creation, Storytelling, Music, Writing, Visual Arts, Performance, Creative Problem Solving, Imagination, Aesthetic Appreciation
+6. Problem-Solving: Analytical Thinking, Strategic Planning, Troubleshooting, Decision Making, Systems Thinking, Root Cause Analysis, Innovation, Logic, Pattern Recognition
+7. Work Experience: Professional Skills, Industry Knowledge, Workplace Etiquette, Time Management, Client Relations, Business Acumen, Career Development, Mentorship
+8. Future Self: Goal Setting, Vision Creation, Personal Growth, Skill Development, Career Planning, Life Balance, Self-Improvement, Aspiration Mapping
+
+Return a JSON object with this structure:
+{
+  "activity_description": "Brief description of what activity/action is shown in the image",
+  "primary_skills": ["List of 3-5 most relevant skills from the taxonomy"],
+  "taxonomy_categories": ["List of 2-3 most relevant category names"],
+  "skill_development_insights": "Analysis of how this activity develops skills and what it reveals about interests",
+  "flow_state_potential": "Explanation of why this activity might cause someone to lose track of time",
+  "growth_opportunities": "Suggestions for related skills or activities to explore",
+  "confidence_level": "High/Medium/Low - how confident the analysis is based on image clarity"
+}
+
+Analyze the image carefully and provide thoughtful insights about the skills being demonstrated or developed through the observed activity.`;
+
+      const requestBody = {
+        contents: [
+          {
+            parts: [
+              {
+                text: taxonomyPrompt
+              },
+              {
+                inline_data: {
+                  mime_type: "image/jpeg",
+                  data: base64Image
+                }
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 2048,
+        }
+      };
+
+      // Try the primary model first
+      let apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      console.log('Making action analysis API request to:', apiUrl);
+      
+      let response;
+      try {
+        response = await axios.post(
+          apiUrl,
+          requestBody,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            timeout: CONFIG.REQUEST_TIMEOUT,
+          }
+        );
+      } catch (error) {
+        // If first model fails, try the 1.5 flash model as fallback
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          console.log('Primary model failed, trying fallback model...');
+          const fallbackUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+          apiUrl = `${fallbackUrl}?key=${getGeminiApiKey()}`;
+          
+          response = await axios.post(
+            apiUrl,
+            requestBody,
+            {
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              timeout: CONFIG.REQUEST_TIMEOUT,
+            }
+          );
+        } else {
+          throw error;
+        }
+      }
+      
+      console.log('Action analysis API Response received:', response.status);
+
+      const responseText = response.data.candidates[0].content.parts[0].text;
+      
+      // Try to extract JSON from the response
+      let jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return {
+          success: false,
+          error: 'Could not parse JSON response from Gemini',
+          rawResponse: responseText
+        };
+      }
+
+      const parsedData = JSON.parse(jsonMatch[0]);
+      
+      return {
+        success: true,
+        data: parsedData,
+        rawResponse: responseText
+      };
+
+    } catch (error) {
+      console.error('Error analyzing action image:', error);
+      
+      // Enhanced error handling
+      let errorMessage = 'Unknown error occurred';
+      let errorDetails = '';
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          errorMessage = `API Error: ${error.response.status} - ${error.response.statusText}`;
+          errorDetails = `Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data)}`;
+          console.error('API Response Error:', error.response.data);
+        } else if (error.request) {
+          errorMessage = 'Network Error: No response from server';
+          errorDetails = 'Check your internet connection and try again';
+        } else {
+          errorMessage = `Request Error: ${error.message}`;
+          errorDetails = error.message;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+        errorDetails = error.stack || error.message;
+      }
+      
+      return {
+        success: false,
+        error: errorMessage,
+        rawResponse: errorDetails
+      };
+    }
+  }
 }

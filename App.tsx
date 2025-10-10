@@ -4,10 +4,13 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { StatusBar } from 'expo-status-bar';
 
+import WelcomeScreen from './src/screens/WelcomeScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import ResultScreen from './src/screens/ResultScreen';
 import BlueScreen from './src/screens/BlueScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
+import VoiceAnalysisScreen from './src/screens/VoiceAnalysisScreen';
+import TextAnalysisScreen from './src/screens/TextAnalysisScreen';
 import { RootStackParamList } from './src/types/navigation';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -18,7 +21,7 @@ export default function App() {
       <NavigationContainer>
         <StatusBar style="auto" />
         <Stack.Navigator 
-          initialRouteName="Home"
+          initialRouteName="Welcome"
           screenOptions={{
             headerStyle: {
               backgroundColor: '#2196F3',
@@ -30,9 +33,14 @@ export default function App() {
           }}
         >
           <Stack.Screen 
+            name="Welcome" 
+            component={WelcomeScreen} 
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen 
             name="Home" 
             component={HomeScreen} 
-            options={{ title: 'Transcript Analyzer' }}
+            options={{ title: 'Activity Analyzer' }}
           />
           <Stack.Screen 
             name="Result" 
@@ -48,6 +56,16 @@ export default function App() {
             name="Dashboard" 
             component={DashboardScreen} 
             options={{ title: 'Achievement Dashboard' }}
+          />
+          <Stack.Screen 
+            name="VoiceAnalysis" 
+            component={VoiceAnalysisScreen} 
+            options={{ title: 'Voice Analysis' }}
+          />
+          <Stack.Screen 
+            name="TextAnalysis" 
+            component={TextAnalysisScreen} 
+            options={{ title: 'Text Analysis' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

@@ -1,208 +1,185 @@
-# Academic Transcript Analyzer
+# Transcript Analyzer
 
-A React Native mobile application that uses Google's Gemini AI to analyze academic transcripts from images. The app allows users to upload photos of their academic transcripts and extracts course information, grades, GPA, and other academic details.
+An Expo (React Native) app that helps users discover their skills and interests by analyzing everyday activities in three ways:
 
-## Features
+- Vision: analyze a photo of what you’re doing
+- Voice: record and transcribe what you’re doing
+- Text: type a short description
 
-- 📱 **Mobile-First Design**: Built with React Native and Expo for cross-platform compatibility
-- 📸 **Image Upload**: Take photos with camera or select from gallery
-- 🤖 **AI Analysis**: Powered by Google Gemini Vision API for accurate transcript extraction
-- 📊 **Structured Results**: Displays course information, grades, GPA, and academic summary
-- 🎨 **Modern UI**: Beautiful gradient design with Material Design components
-- 📤 **Share Results**: Share analysis results via native sharing
-- 🔒 **Privacy Focused**: No data storage, all processing done via API
+All three paths are evaluated against a skills taxonomy, and results are presented on a unified Results screen and a Dashboard.
 
-## Prerequisites
+## Key features
 
-- Node.js (v16 or higher)
-- npm or yarn
-- Expo CLI (`npm install -g @expo/cli`)
-- Google Gemini API key
+- Welcome screen with animated FAB that fans out three actions (photo, mic, text)
+- Image-based activity analysis via Gemini Vision
+- Voice recording, transcription, and skill analysis via Gemini
+- Text-based activity analysis with structured results
+- Results screen shows activity insights, identified skills, categories, confidence, and growth opportunities
+- Dashboard summarizes interests and frequently occurring skills
+- Works in Expo Go (managed workflow, no native build required)
 
-## Installation
+## Tech stack
 
-1. **Clone or navigate to the project directory:**
+- Expo SDK 54 (managed workflow)
+- React Native, TypeScript
+- React Navigation (Stack)
+- react-native-paper (UI)
+- @expo/vector-icons (Material Icons)
+- expo-av (audio recording)
+- expo-linear-gradient (visuals)
+- expo-file-system (base64 image/audio handling)
+- axios (networking)
 
-   ```bash
-   cd TranscriptAnalyzer
-   ```
-
-2. **Install dependencies:**
-
-   ```bash
-   npm install
-   ```
-
-3. **Set up your Gemini API key:**
-
-   - Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
-   - Create a new API key
-   - Open `src/services/geminiService.ts`
-   - Replace `YOUR_GEMINI_API_KEY` with your actual API key
-
-4. **Start the development server:**
-   ```bash
-   npx expo start
-   ```
-
-## Usage
-
-### Running the App
-
-1. **For iOS Simulator:**
-
-   ```bash
-   npm run ios
-   ```
-
-2. **For Android Emulator:**
-
-   ```bash
-   npm run android
-   ```
-
-3. **For Web Browser:**
-
-   ```bash
-   npm run web
-   ```
-
-4. **On Physical Device:**
-   - Install Expo Go app from App Store/Google Play
-   - Scan the QR code displayed in the terminal
-
-### Using the App
-
-1. **Upload Transcript Image:**
-
-   - Tap "Choose from Gallery" to select an existing image
-   - Tap "Take Photo" to capture a new image with camera
-   - Ensure the transcript is clearly visible and well-lit
-
-2. **Analyze Transcript:**
-
-   - Tap "Analyze Transcript" to send the image to Gemini AI
-   - Wait for the analysis to complete (usually 10-30 seconds)
-
-3. **View Results:**
-   - Review extracted course information
-   - Check grades, GPA, and academic summary
-   - Share results if desired
-
-## Project Structure
+## Project structure
 
 ```
 TranscriptAnalyzer/
+├── App.tsx
+├── index.ts
 ├── src/
-│   ├── components/          # Reusable UI components
-│   ├── screens/            # Main app screens
-│   │   ├── HomeScreen.tsx  # Main upload and analysis screen
-│   │   └── ResultScreen.tsx # Results display screen
-│   ├── services/           # API and utility services
-│   │   ├── geminiService.ts    # Gemini AI integration
-│   │   └── imagePickerService.ts # Image selection logic
-│   └── types/              # TypeScript type definitions
-├── App.tsx                 # Main app component with navigation
-├── app.json               # Expo configuration
-└── package.json           # Dependencies and scripts
+│   ├── components/
+│   │   ├── ImageEditor.tsx
+│   │   └── ZoomableImageView.tsx
+│   ├── config/
+│   │   ├── env.example.ts
+│   │   └── env.ts
+│   ├── screens/
+│   │   ├── WelcomeScreen.tsx          # Animated FAB entry point
+│   │   ├── HomeScreen.tsx             # Vision-based activity analysis
+│   │   ├── ResultScreen.tsx           # Unified results renderer
+│   │   ├── VoiceAnalysisScreen.tsx    # Voice record/transcribe/analyze
+│   │   └── TextAnalysisScreen.tsx     # Text-based analysis
+│   ├── services/
+│   │   ├── geminiService.ts           # Gemini API integration
+│   │   └── imagePickerService.ts
+│   └── types/
+│       ├── index.ts
+│       └── navigation.ts
+├── assets/
+│   ├── icon.png
+│   ├── splash-icon.png
+│   └── ...
+├── app.json
+├── eas.json
+├── package.json
+└── tsconfig.json
 ```
 
-## Configuration
+## Setup
 
-### API Key Setup
+1. Requirements
 
-The app requires a Google Gemini API key to function. Follow these steps:
+- Node.js 18+
+- npm or yarn
+- Expo CLI (optional – you can use `npx expo`)
 
-1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. Sign in with your Google account
-3. Click "Create API Key"
-4. Copy the generated key
-5. Open `src/services/geminiService.ts`
-6. Replace `YOUR_GEMINI_API_KEY` with your actual key
+2. Install dependencies
 
-### Environment Variables (Optional)
+- From the project root, install packages using your preferred package manager.
 
-For better security, you can use environment variables:
+3. Configure Gemini
 
-1. Create a `.env` file in the root directory
-2. Add: `GEMINI_API_KEY=your_actual_api_key_here`
-3. Install `react-native-dotenv` if needed
-4. Update the service to use `process.env.GEMINI_API_KEY`
+- Copy `src/config/env.example.ts` to `src/config/env.ts`
+- Replace `GEMINI_API_KEY` with your key from Google AI Studio
+- Keep `GEMINI_API_URL` as provided unless you have a custom endpoint
+
+Note: Do not check real API keys into source control for production. Consider environment-based configuration for release builds.
+
+## Run
+
+- Start the Expo dev server and open the app in Expo Go on your device (or simulators via the Expo menu).
+
+Common scripts (if present in `package.json`):
+
+- `start`: Launch Metro bundler
+- `ios`: Open iOS simulator
+- `android`: Open Android emulator
+- `web`: Open web preview
+
+## How it works
+
+1. Welcome screen (animated FAB)
+
+- A central FAB near the bottom-right opens three actions:
+  - Photo: pick or capture an image and analyze with Gemini Vision
+  - Mic: record audio, transcribe to text with Gemini, then analyze
+  - Text: type a short description for immediate analysis
+
+2. Vision analysis (`HomeScreen` → `geminiService.analyzeActionImage`)
+
+- Encodes the selected image to base64 and sends it to Gemini Vision with a prompt grounded in the skills taxonomy
+- Parses structured JSON (activity, primary skills, categories, insights, growth opportunities, confidence)
+
+3. Voice analysis (`VoiceAnalysisScreen` → `geminiService.transcribeAudio` → taxonomy analysis)
+
+- Uses `expo-av` to record audio
+- Reads file as base64 with correct mime type
+- Sends to Gemini for transcription, then analyzes the transcript against the taxonomy
+
+4. Text analysis (`TextAnalysisScreen` → `geminiService.processTranscriptText`)
+
+- Sends the typed description and taxonomy prompt to Gemini
+- Parses and renders the same structured result format
+
+5. Results & Dashboard
+
+- `ResultScreen` renders either vision or transcript/text-based analyses
+- Identified skills and categories feed into the Dashboard to surface trends
+
+## Configuration details
+
+- `src/config/env.ts`
+  - `GEMINI_API_KEY`: Your API key (required)
+  - `GEMINI_API_URL`: Defaults to Gemini 2.0 Flash generateContent endpoint
+  - Image constraints: `MAX_IMAGE_SIZE`, `IMAGE_QUALITY`, `IMAGE_ASPECT_RATIO`
+  - `REQUEST_TIMEOUT`: Network timeout in ms
+
+Security tip: The sample uses a TypeScript config file for simplicity. For production, prefer secrets management (e.g., EAS secrets, server-side proxy) to avoid shipping keys in apps.
 
 ## Permissions
 
-The app requires the following permissions:
+- Camera / Media Library: Select or capture photos for vision analysis
+- Microphone: Record audio for voice analysis
+- Network: Access Gemini APIs
 
-- **Camera**: To take photos of transcripts
-- **Photo Library**: To select existing transcript images
-- **Internet**: To communicate with Gemini API
-
-These permissions are automatically requested when needed.
+Permissions are requested at runtime as needed.
 
 ## Troubleshooting
 
-### Common Issues
+- White screen or stale UI after changes
 
-1. **"Analysis Failed" Error:**
+  - Fully reload the app from Expo Dev Tools or clear Metro cache (`--clear`)
 
-   - Ensure your Gemini API key is correctly set
-   - Check your internet connection
-   - Try with a clearer, better-lit image
-   - Verify the transcript text is readable
+- FAB not at expected position after hot reload
 
-2. **Image Upload Issues:**
+  - Re-open the app (layout transforms can cache with hot reload)
 
-   - Grant camera and photo library permissions
-   - Ensure sufficient storage space
-   - Try restarting the app
+- Gemini errors (4xx/5xx)
 
-3. **Build Errors:**
-   - Clear npm cache: `npm cache clean --force`
-   - Delete node_modules and reinstall: `rm -rf node_modules && npm install`
-   - Reset Expo cache: `npx expo start --clear`
+  - Verify API key validity and quota
+  - Ensure the model/endpoint is available in your region
+  - Try again; the service includes a basic fallback to a compatible model if configured
 
-### Performance Tips
+- Audio transcription issues
 
-- Use high-quality, well-lit images for better analysis
-- Ensure transcript text is clearly visible and not blurry
-- Close other apps to free up memory
-- Use a stable internet connection for API calls
+  - Make sure mic permissions are granted
+  - Speak clearly and keep recordings short while testing
 
-## API Usage
+- Image analysis poor results
+  - Use a clear, well-lit image that focuses on the activity
 
-The app uses Google's Gemini Pro Vision model for image analysis. The API:
+## Roadmap
 
-- Processes images up to 4MB
-- Supports JPEG, PNG, and WebP formats
-- Returns structured JSON data
-- Has rate limits (check Google AI Studio for current limits)
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+- Persist analysis history locally for richer Dashboard insights
+- Improve result visualizations and badges
+- Add offline-friendly drafts and background uploads
+- Parameterize taxonomy for custom domains
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT
 
-## Support
+## Acknowledgements
 
-For issues and questions:
-
-- Check the troubleshooting section above
-- Review Expo and React Native documentation
-- Consult Google Gemini API documentation
-
-## Future Enhancements
-
-- PDF upload support
-- Multiple transcript comparison
-- Export to various formats (PDF, CSV)
-- Offline processing capabilities
-- Enhanced error handling and retry logic
-- User authentication and history
-- Custom analysis templates
+- Google Gemini for multimodal AI
+- Expo, React Native, and the open-source community

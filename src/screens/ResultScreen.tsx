@@ -23,7 +23,7 @@ import { AnalysisResult, TranscriptAnalysis, Course } from '../types';
 type RootStackParamList = {
   Home: undefined;
   Result: { result: AnalysisResult };
-  Dashboard: { analysisResult?: AnalysisResult };
+  Dashboard: undefined;
 };
 
 type ResultScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Result'>;
@@ -37,19 +37,60 @@ interface Props {
 export default function ResultScreen({ navigation, route }: Props) {
   const { result } = route.params;
   const data = result.data;
+  
+  // Detect if this is action analysis or transcript analysis
+  const isActionAnalysis = data && 'activity_description' in data;
+  const isTranscriptAnalysis = data && 'courses' in data;
 
   const handleShare = async () => {
     if (!data) return;
 
     try {
-      const shareText = generateShareText(data);
+      const shareText = isActionAnalysis ? generateActionShareText(data) : generateShareText(data);
+      const title = isActionAnalysis ? 'My Activity Analysis' : 'My Transcript Analysis';
       await Share.share({
         message: shareText,
-        title: 'My Transcript Analysis',
+        title,
       });
     } catch (error) {
       Alert.alert('Error', 'Failed to share results');
     }
+  };
+
+  const generateActionShareText = (actionData: any): string => {
+    let text = '🎯 Activity Analysis Results\n\n';
+    
+    text += `📝 Activity: ${actionData.activity_description}\n\n`;
+    
+    if (actionData.primary_skills?.length > 0) {
+      text += '🛠️ Primary Skills:\n';
+      actionData.primary_skills.forEach((skill: string) => {
+        text += `• ${skill}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (actionData.taxonomy_categories?.length > 0) {
+      text += '📚 Categories:\n';
+      actionData.taxonomy_categories.forEach((category: string) => {
+        text += `• ${category}\n`;
+      });
+      text += '\n';
+    }
+    
+    if (actionData.flow_state_potential) {
+      text += `⏰ Flow State: ${actionData.flow_state_potential}\n\n`;
+    }
+    
+    if (actionData.skill_development_insights) {
+      text += `💡 Insights: ${actionData.skill_development_insights}\n\n`;
+    }
+    
+    if (actionData.confidence_level) {
+      text += `🎯 Confidence: ${actionData.confidence_level}\n`;
+    }
+    
+    return text;
   };
 
   const generateShareText = (transcriptData: TranscriptAnalysis): string => {
@@ -97,6 +138,125 @@ export default function ResultScreen({ navigation, route }: Props) {
     return '#757575';
   };
 
+  const renderActionAnalysis = (actionData: any) => (
+    <ScrollView style={styles.scrollView}>
+      {/* Activity Description */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>🎯 Activity Identified</Title>
+          <Paragraph style={styles.activityDescription}>
+            {actionData.activity_description}
+          </Paragraph>
+        </Card.Content>
+      </Card>
+
+      {/* Primary Skills */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>🛠️ Primary Skills Demonstrated</Title>
+          <View style={styles.skillsContainer}>
+            {actionData.primary_skills?.map((skill: string, index: number) => (
+              <Chip 
+                key={index} 
+                style={[styles.skillChip, { backgroundColor: '#e3f2fd' }]}
+                textStyle={styles.skillChipText}
+              >
+                {skill}
+              </Chip>
+            ))}
+          </View>
+        </Card.Content>
+      </Card>
+
+      {/* Taxonomy Categories */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>📚 Skills Categories</Title>
+          <View style={styles.categoriesContainer}>
+            {actionData.taxonomy_categories?.map((category: string, index: number) => (
+              <Chip 
+                key={index} 
+                style={[styles.categoryChip, { backgroundColor: '#f3e5f5' }]}
+                textStyle={styles.categoryChipText}
+              >
+                {category}
+              </Chip>
+            ))}
+          </View>
+        </Card.Content>
+      </Card>
+
+      {/* Flow State Potential */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>⏰ Flow State Analysis</Title>
+          <Paragraph style={styles.analysisText}>
+            {actionData.flow_state_potential}
+          </Paragraph>
+        </Card.Content>
+      </Card>
+
+      {/* Skill Development Insights */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>💡 Development Insights</Title>
+          <Paragraph style={styles.analysisText}>
+            {actionData.skill_development_insights}
+          </Paragraph>
+        </Card.Content>
+      </Card>
+
+      {/* Growth Opportunities */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>🌱 Growth Opportunities</Title>
+          <Paragraph style={styles.analysisText}>
+            {actionData.growth_opportunities}
+          </Paragraph>
+        </Card.Content>
+      </Card>
+
+      {/* Confidence Level */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>🎯 Analysis Confidence</Title>
+          <Chip 
+            style={[
+              styles.confidenceChip, 
+              { 
+                backgroundColor: actionData.confidence_level === 'High' ? '#4CAF50' : 
+                                actionData.confidence_level === 'Medium' ? '#FF9800' : '#FF5722'
+              }
+            ]}
+            textStyle={styles.confidenceChipText}
+          >
+            {actionData.confidence_level} Confidence
+          </Chip>
+        </Card.Content>
+      </Card>
+
+      {/* Action Buttons */}
+      <View style={styles.buttonContainer}>
+        <Button
+          mode="outlined"
+          onPress={handleShare}
+          style={styles.button}
+          icon="share"
+        >
+          Share Analysis
+        </Button>
+        <Button
+          mode="contained"
+          onPress={() => navigation.navigate('Dashboard')}
+          style={[styles.button, styles.primaryButton]}
+          icon="view-dashboard"
+        >
+          View Dashboard
+        </Button>
+      </View>
+    </ScrollView>
+  );
+
   if (!result.success || !data) {
     return (
       <View style={styles.errorContainer}>
@@ -118,6 +278,15 @@ export default function ResultScreen({ navigation, route }: Props) {
           </Card>
         </LinearGradient>
       </View>
+    );
+  }
+
+  // Conditionally render based on analysis type
+  if (isActionAnalysis) {
+    return (
+      <LinearGradient colors={['#4c669f', '#3b5998', '#192f6a']} style={styles.gradient}>
+        {renderActionAnalysis(data)}
+      </LinearGradient>
     );
   }
 
@@ -258,7 +427,7 @@ export default function ResultScreen({ navigation, route }: Props) {
             
             <Button
               mode="contained"
-              onPress={() => navigation.navigate('Dashboard', { analysisResult: result })}
+              onPress={() => navigation.navigate('Dashboard')}
               style={[styles.actionButton, styles.dashboardButton]}
               icon="view-dashboard"
             >
@@ -402,5 +571,71 @@ const styles = StyleSheet.create({
   backButton: {
     backgroundColor: '#f44336',
     marginTop: 16,
+  },
+  // Action Analysis Styles
+  scrollView: {
+    flex: 1,
+    padding: 16,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  activityDescription: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: '#444',
+  },
+  skillsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  skillChip: {
+    margin: 4,
+    elevation: 2,
+  },
+  skillChipText: {
+    fontSize: 12,
+    color: '#1976d2',
+    fontWeight: '500',
+  },
+  categoriesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  categoryChip: {
+    margin: 4,
+    elevation: 2,
+  },
+  categoryChipText: {
+    fontSize: 12,
+    color: '#7b1fa2',
+    fontWeight: '500',
+  },
+  analysisText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: '#555',
+  },
+  confidenceChip: {
+    marginTop: 8,
+    elevation: 2,
+  },
+  confidenceChipText: {
+    fontSize: 12,
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  button: {
+    flex: 1,
+    marginHorizontal: 8,
+    marginVertical: 4,
+  },
+  primaryButton: {
+    backgroundColor: '#4c669f',
   },
 });
