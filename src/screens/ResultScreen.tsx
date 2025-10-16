@@ -57,6 +57,48 @@ export default function ResultScreen({ navigation, route }: Props) {
     }
   };
 
+  const generateFollowUpQuestion = (actionData: any): string => {
+    const activity = actionData?.activity_description?.toLowerCase?.() || '';
+    const categories: string[] = actionData?.taxonomy_categories || [];
+    const skills: string[] = actionData?.primary_skills || [];
+
+    // Priority: ask about depth/next step tailored to category
+    if (categories.includes('Creative Expression')) {
+      return 'Would you like to create a small project this week (e.g., a 60-second reel, a sketch, or a short story) to explore this interest further?';
+    }
+    if (categories.includes('Maker & Builder')) {
+      return 'What’s a simple prototype or build you could complete in the next 2–3 hours to test an idea from this activity?';
+    }
+    if (categories.includes('Meta-Learning')) {
+      return 'What is one question you’re curious about from this activity, and how would you go about researching it?';
+    }
+    if (categories.includes('Human Skills')) {
+      return 'Who could you share or collaborate with on this activity this week to amplify your impact or feedback?';
+    }
+    if (categories.includes('Problem-Solving')) {
+      return 'What challenge did you encounter during this activity, and how might you approach solving it differently next time?';
+    }
+    if (categories.includes('Civic Impact')) {
+      return 'Is there a community or cause that could benefit from this activity—what’s one small action you could take?';
+    }
+    if (categories.includes('Work Experience')) {
+      return 'Is there a real-world context (internship, freelance, volunteer) where you could apply this activity in the next month?';
+    }
+    if (categories.includes('Future Self')) {
+      return 'If this became part of your routine, what would “leveling up” look like in 30 days?';
+    }
+
+    // Generic backstop using skills if available
+    if (skills.length > 0) {
+      return `Which part of this activity best builds ${skills[0]}, and how could you double that time next week?`;
+    }
+    // Fallback to activity description
+    if (activity) {
+      return 'What is one tiny next step you could take to go a bit deeper with this activity this week?';
+    }
+    return 'What is one small next step you could take to explore this interest further?';
+  };
+
   const generateActionShareText = (actionData: any): string => {
     let text = '🎯 Activity Analysis Results\n\n';
     
@@ -232,6 +274,16 @@ export default function ResultScreen({ navigation, route }: Props) {
           >
             {actionData.confidence_level} Confidence
           </Chip>
+        </Card.Content>
+      </Card>
+
+      {/* Follow-up Question */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>🧩 Follow-up Question</Title>
+          <Paragraph style={styles.analysisText}>
+            {generateFollowUpQuestion(actionData)}
+          </Paragraph>
         </Card.Content>
       </Card>
 

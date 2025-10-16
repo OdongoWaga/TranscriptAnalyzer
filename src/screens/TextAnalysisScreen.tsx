@@ -153,6 +153,39 @@ Analyze the text carefully and provide thoughtful insights about the skills bein
     }
   };
 
+  const generateFollowUpQuestion = (data: AnalysisResult): string => {
+    const categories = data.taxonomy_categories || [];
+    const skills = data.primary_skills || [];
+    if (categories.includes('Creative Expression')) {
+      return 'Would you create a small piece this week (e.g., a 60-second reel, a sketch, or a short story) to explore this interest?';
+    }
+    if (categories.includes('Maker & Builder')) {
+      return 'What quick prototype could you build in the next 2–3 hours to test an idea from this activity?';
+    }
+    if (categories.includes('Meta-Learning')) {
+      return 'What is one question you’re curious about here, and how would you research it?';
+    }
+    if (categories.includes('Human Skills')) {
+      return 'Who could you share or collaborate with this week to amplify your impact or get feedback?';
+    }
+    if (categories.includes('Problem-Solving')) {
+      return 'What challenge did you hit during this activity, and how might you approach it differently next time?';
+    }
+    if (categories.includes('Civic Impact')) {
+      return 'Is there a community or cause that could benefit from this—what’s one small action you could take?';
+    }
+    if (categories.includes('Work Experience')) {
+      return 'Is there a real-world context (internship, freelance, volunteer) where you could apply this in the next month?';
+    }
+    if (categories.includes('Future Self')) {
+      return 'If this became part of your routine, what would “leveling up” look like in 30 days?';
+    }
+    if (skills.length > 0) {
+      return `Which part of this activity best builds ${skills[0]}, and how could you double that time next week?`;
+    }
+    return 'What is one small next step you could take to explore this interest further?';
+  };
+
   return (
     <LinearGradient colors={['#667eea', '#764ba2']} style={styles.container}>
       <KeyboardAvoidingView 
@@ -289,6 +322,15 @@ Analyze the text carefully and provide thoughtful insights about the skills bein
                   <Title style={styles.cardTitle}>🌱 Growth Opportunities</Title>
                   <Paragraph style={styles.resultText}>
                     {analysisResult.growth_opportunities}
+                  </Paragraph>
+                </Card.Content>
+              </Card>
+
+              <Card style={styles.resultCard}>
+                <Card.Content>
+                  <Title style={styles.cardTitle}>🧩 Follow-up Question</Title>
+                  <Paragraph style={styles.resultText}>
+                    {generateFollowUpQuestion(analysisResult)}
                   </Paragraph>
                 </Card.Content>
               </Card>

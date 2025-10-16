@@ -1,8 +1,37 @@
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { ImageUploadResult } from '../types';
 import { CONFIG } from '../config/env';
 
 export class ImagePickerService {
+  /**
+   * Convert any image to JPEG format to ensure compatibility with Gemini API.
+   * iPhone camera photos are often in HEIC format which Gemini doesn't support.
+   */
+  private static async convertToJpeg(imageUri: string): Promise<string> {
+    try {
+      console.log('Converting image to JPEG format:', imageUri);
+      
+      // Manipulate and convert to JPEG
+      const manipulatedImage = await ImageManipulator.manipulateAsync(
+        imageUri,
+        [
+          // Resize to max 2048px width to keep file size reasonable
+          { resize: { width: 2048 } }
+        ],
+        {
+          compress: CONFIG.IMAGE_QUALITY,
+          format: ImageManipulator.SaveFormat.JPEG, // Force JPEG format
+        }
+      );
+      
+      console.log('Image converted to JPEG:', manipulatedImage.uri);
+      return manipulatedImage.uri;
+    } catch (error) {
+      console.error('Error converting image to JPEG:', error);
+      throw new Error('Failed to convert image to JPEG format');
+    }
+  }
   public static async requestPermissions(): Promise<boolean> {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     const cameraStatus = await ImagePicker.requestCameraPermissionsAsync();
@@ -21,9 +50,12 @@ export class ImagePickerService {
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
+        // Convert to JPEG to ensure compatibility with Gemini API
+        const jpegUri = await this.convertToJpeg(result.assets[0].uri);
+        
         return {
           success: true,
-          imageUri: result.assets[0].uri,
+          imageUri: jpegUri,
         };
       } else {
         return {
@@ -47,9 +79,12 @@ export class ImagePickerService {
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
+        // Convert to JPEG to ensure compatibility with Gemini API
+        const jpegUri = await this.convertToJpeg(result.assets[0].uri);
+        
         return {
           success: true,
-          imageUri: result.assets[0].uri,
+          imageUri: jpegUri,
         };
       } else {
         return {
