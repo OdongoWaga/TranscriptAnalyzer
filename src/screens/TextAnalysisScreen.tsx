@@ -17,6 +17,7 @@ import {
   Chip,
 } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../types/navigation';
 import { GeminiService } from '../services/geminiService';
@@ -258,7 +259,10 @@ Analyze the text carefully and provide thoughtful insights about the skills bein
             <>
               <Card style={styles.resultCard}>
                 <Card.Content>
-                  <Title style={styles.cardTitle}>🎯 Activity Identified</Title>
+                  <View style={styles.cardTitleContainer}>
+                    <MaterialIcons name="track-changes" size={22} color="#667eea" />
+                    <Title style={styles.cardTitle}>Activity Identified</Title>
+                  </View>
                   <Paragraph style={styles.resultText}>
                     {analysisResult.activity_description}
                   </Paragraph>
@@ -310,7 +314,10 @@ Analyze the text carefully and provide thoughtful insights about the skills bein
 
               <Card style={styles.resultCard}>
                 <Card.Content>
-                  <Title style={styles.cardTitle}>💡 Development Insights</Title>
+                  <View style={styles.cardTitleContainer}>
+                    <MaterialIcons name="lightbulb" size={22} color="#667eea" />
+                    <Title style={styles.cardTitle}>Development Insights</Title>
+                  </View>
                   <Paragraph style={styles.resultText}>
                     {analysisResult.skill_development_insights}
                   </Paragraph>
@@ -319,18 +326,33 @@ Analyze the text carefully and provide thoughtful insights about the skills bein
 
               <Card style={styles.resultCard}>
                 <Card.Content>
-                  <Title style={styles.cardTitle}>🌱 Growth Opportunities</Title>
+                  <View style={styles.cardTitleContainer}>
+                    <MaterialIcons name="trending-up" size={22} color="#667eea" />
+                    <Title style={styles.cardTitle}>Growth Opportunities</Title>
+                  </View>
                   <Paragraph style={styles.resultText}>
                     {analysisResult.growth_opportunities}
                   </Paragraph>
                 </Card.Content>
               </Card>
 
-              <Card style={styles.resultCard}>
+              <Card 
+                style={styles.resultCard}
+                onPress={() => navigation.navigate('FollowUpQuestion', {
+                  question: generateFollowUpQuestion(analysisResult),
+                  context: analysisResult,
+                })}
+              >
                 <Card.Content>
-                  <Title style={styles.cardTitle}>🧩 Follow-up Question</Title>
+                  <View style={styles.cardTitleContainer}>
+                    <MaterialIcons name="extension" size={22} color="#667eea" />
+                    <Title style={styles.cardTitle}>Follow-up Question</Title>
+                  </View>
                   <Paragraph style={styles.resultText}>
                     {generateFollowUpQuestion(analysisResult)}
+                  </Paragraph>
+                  <Paragraph style={styles.tapHint}>
+                    👆 Tap to answer this question
                   </Paragraph>
                 </Card.Content>
               </Card>
@@ -396,7 +418,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 12,
+    marginBottom: 5,
+  },
+  cardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  inputContainer: {
+    marginBottom: 16,
   },
   textInput: {
     backgroundColor: 'white',
@@ -438,6 +469,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     color: '#555',
+  },
+  tapHint: {
+    fontSize: 12,
+    color: '#667eea',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
   },
   skillsContainer: {
     flexDirection: 'row',

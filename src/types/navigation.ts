@@ -10,6 +10,7 @@ export type RootStackParamList = {
   Dashboard: undefined;
   VoiceAnalysis: undefined;
   TextAnalysis: undefined;
+  FollowUpQuestion: { question: string; context?: any };
 };
 
 

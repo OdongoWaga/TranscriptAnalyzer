@@ -11,6 +11,7 @@ import BlueScreen from './src/screens/BlueScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import VoiceAnalysisScreen from './src/screens/VoiceAnalysisScreen';
 import TextAnalysisScreen from './src/screens/TextAnalysisScreen';
+import FollowUpQuestionScreen from './src/screens/FollowUpQuestionScreen';
 import { RootStackParamList } from './src/types/navigation';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
@@ -78,6 +79,11 @@ export default function App() {
             name="TextAnalysis" 
             component={TextAnalysisScreen} 
             options={{ title: 'Text Analysis' }}
+          />
+          <Stack.Screen 
+            name="FollowUpQuestion" 
+            component={FollowUpQuestionScreen} 
+            options={{ title: 'Answer Follow-up Question' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

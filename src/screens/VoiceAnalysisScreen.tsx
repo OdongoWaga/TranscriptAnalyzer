@@ -322,10 +322,22 @@ Format your response as a thoughtful analysis that helps them understand their s
         )}
 
         {(analysis || transcript) && (
-          <Card style={styles.resultCard}>
+          <Card 
+            style={styles.resultCard}
+            onPress={() => navigation.navigate('FollowUpQuestion', {
+              question: generateFollowUpQuestion(),
+              context: { transcript, analysis },
+            })}
+          >
             <Card.Content>
-              <Title style={styles.sectionTitle}>🧩 Follow-up Question</Title>
+              <View style={styles.cardTitleContainer}>
+                <MaterialIcons name="extension" size={22} color="#667eea" />
+                <Title style={styles.sectionTitle}>Follow-up Question</Title>
+              </View>
               <Paragraph style={styles.analysisText}>{generateFollowUpQuestion()}</Paragraph>
+              <Paragraph style={styles.tapHint}>
+                👆 Tap to answer this question
+              </Paragraph>
             </Card.Content>
           </Card>
         )}
@@ -462,6 +474,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     elevation: 4,
   },
+  cardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -477,6 +495,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: '#333',
+  },
+  tapHint: {
+    fontSize: 12,
+    color: '#667eea',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
   },
   skillCategory: {
     marginBottom: 15,
