@@ -2,6 +2,8 @@ import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 import { AnalysisResult, TranscriptAnalysis } from '../types';
 import { CONFIG, getGeminiApiKey } from '../config/env';
+import { normalizeSkills, mapSkillToTaxonomy, findSkillCategory } from './skillTaxonomyService';
+import { saveIdentifiedSkills } from './userSkillsService';
 
 export class GeminiService {
   // Test method to validate API connection
@@ -499,6 +501,28 @@ Analyze the image carefully and provide thoughtful insights about the skills bei
       }
 
       const parsedData = JSON.parse(jsonMatch[0]);
+      
+      // Normalize skills to match taxonomy exactly
+      if (parsedData.primary_skills && Array.isArray(parsedData.primary_skills)) {
+        const normalizedSkills = normalizeSkills(parsedData.primary_skills);
+        
+        // Log the mapping for debugging
+        console.log('Original skills:', parsedData.primary_skills);
+        console.log('Normalized skills:', normalizedSkills);
+        
+        // Replace with normalized skills
+        parsedData.primary_skills = normalizedSkills;
+        
+        // Save identified skills to AsyncStorage
+        try {
+          const categories = normalizedSkills.map(skill => findSkillCategory(skill) || 'Unknown');
+          await saveIdentifiedSkills(normalizedSkills, categories, 'image');
+          console.log('Skills saved to storage');
+        } catch (error) {
+          console.error('Error saving skills to storage:', error);
+          // Don't fail the whole operation if storage fails
+        }
+      }
       
       return {
         success: true,

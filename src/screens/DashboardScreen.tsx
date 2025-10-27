@@ -8,8 +8,10 @@ import {
   Dimensions,
   Alert,
 } from 'react-native';
-import { Button, Card, ActivityIndicator } from 'react-native-paper';
+import { Button, Card, ActivityIndicator, Chip } from 'react-native-paper';
+import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getTaxonomySkillsWithStatus, getSkillsStats } from '../services/userSkillsService';
 
 const { width } = Dimensions.get('window');
 
@@ -229,15 +231,27 @@ export default function DashboardScreen({ route, navigation }: any) {
   });
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [skillsData, setSkillsData] = useState<any[]>([]);
+  const [skillsStats, setSkillsStats] = useState<any>(null);
+  const [selectedSkillCategory, setSelectedSkillCategory] = useState<string>('All');
 
   const analysisResult = route?.params?.analysisResult;
 
   useEffect(() => {
     loadUserProgress();
+    loadSkillsData();
     if (analysisResult) {
       processTranscriptAnalysis(analysisResult);
     }
   }, []);
+  
+  useEffect(() => {
+    // Reload skills when screen comes into focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadSkillsData();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   const loadUserProgress = async () => {
     try {
@@ -258,6 +272,21 @@ export default function DashboardScreen({ route, navigation }: any) {
       console.error('Error loading user progress:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSkillsData = async () => {
+    try {
+      const [taxonomySkills, stats] = await Promise.all([
+        getTaxonomySkillsWithStatus(),
+        getSkillsStats(),
+      ]);
+      
+      setSkillsData(taxonomySkills);
+      setSkillsStats(stats);
+      console.log('Skills loaded. Total identified:', stats.totalSkills);
+    } catch (error) {
+      console.error('Error loading skills data:', error);
     }
   };
 
@@ -382,7 +411,14 @@ export default function DashboardScreen({ route, navigation }: any) {
 
   const unlockedCount = userProgress.stamps.filter(s => s.unlocked).length;
   const totalCount = userProgress.stamps.length;
-  const progressPercentage = Math.round((unlockedCount / totalCount) * 100);
+  // Skills progress: identified vs total taxonomy skills
+  const totalTaxonomySkills = Array.isArray(skillsData)
+    ? skillsData.reduce((sum, group) => sum + (Array.isArray(group?.skills) ? group.skills.length : 0), 0)
+    : 0;
+  const identifiedSkillsCount = skillsStats?.totalSkills || 0;
+  const progressPercentage = totalTaxonomySkills > 0
+    ? Math.round((identifiedSkillsCount / totalTaxonomySkills) * 100)
+    : 0;
 
   if (loading) {
     return (
@@ -399,25 +435,25 @@ export default function DashboardScreen({ route, navigation }: any) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>🎯 Your Achievement Dashboard</Text>
-          <Text style={styles.subtitle}>Collect stamps based on your academic journey!</Text>
+          <Text style={styles.subtitle}>Track your identified skills and achievements!</Text>
         </View>
 
-        {/* Progress Overview */}
+        {/* Progress Overview (Skills) */}
         <Card style={styles.progressCard}>
           <Card.Content>
-            <Text style={styles.progressTitle}>Your Progress</Text>
+            <Text style={styles.progressTitle}>Your Skills Progress</Text>
             <View style={styles.progressStats}>
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{unlockedCount}</Text>
-                <Text style={styles.statLabel}>Stamps Collected</Text>
+                <Text style={styles.statNumber}>{identifiedSkillsCount}</Text>
+                <Text style={styles.statLabel}>Skills Identified</Text>
               </View>
               <View style={styles.statItem}>
-                <Text style={styles.statNumber}>{userProgress.totalScans}</Text>
-                <Text style={styles.statLabel}>Transcripts Scanned</Text>
+                <Text style={styles.statNumber}>{totalTaxonomySkills}</Text>
+                <Text style={styles.statLabel}>Total Skills</Text>
               </View>
               <View style={styles.statItem}>
                 <Text style={styles.statNumber}>{progressPercentage}%</Text>
-                <Text style={styles.statLabel}>Collection Complete</Text>
+                <Text style={styles.statLabel}>Completion</Text>
               </View>
             </View>
             <View style={styles.progressBar}>
@@ -426,69 +462,94 @@ export default function DashboardScreen({ route, navigation }: any) {
           </Card.Content>
         </Card>
 
-        {/* Transcript Summary */}
-        {userProgress.transcriptData && (
-          <Card style={styles.summaryCard}>
+        {/* Skills Taxonomy Section */}
+        {skillsStats && skillsStats.totalSkills > 0 && (
+          <Card style={styles.skillsCard}>
             <Card.Content>
-              <Text style={styles.summaryTitle}>📄 Your Academic Summary</Text>
+              <View style={styles.skillsHeader}>
+                <MaterialIcons name="emoji-events" size={24} color="#667eea" />
+                <Text style={styles.skillsTitle}>Your Identified Skills</Text>
+              </View>
               
-              <View style={styles.summarySection}>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>🎓 Institution:</Text>
-                  <Text style={styles.summaryValue}>{userProgress.transcriptData.institution || 'N/A'}</Text>
+              {/* Skills Stats */}
+              <View style={styles.skillsStatsContainer}>
+                <View style={styles.skillStatItem}>
+                  <Text style={styles.skillStatNumber}>{skillsStats.totalSkills}</Text>
+                  <Text style={styles.skillStatLabel}>Skills Identified</Text>
                 </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>📚 Degree:</Text>
-                  <Text style={styles.summaryValue}>{userProgress.transcriptData.degree || 'N/A'}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>📊 GPA:</Text>
-                  <Text style={[styles.summaryValue, styles.gpaValue]}>{userProgress.transcriptData.gpa || 'N/A'}</Text>
-                </View>
-                <View style={styles.summaryRow}>
-                  <Text style={styles.summaryLabel}>🏆 Credits:</Text>
-                  <Text style={styles.summaryValue}>{userProgress.transcriptData.totalCredits || 'N/A'}</Text>
+                <View style={styles.skillStatItem}>
+                  <Text style={styles.skillStatNumber}>
+                    {Object.keys(skillsStats.skillsByCategory).length}
+                  </Text>
+                  <Text style={styles.skillStatLabel}>Categories</Text>
                 </View>
               </View>
 
-              {/* Subject Distribution */}
-              {Object.keys(userProgress.transcriptData.coursesBySubject).length > 0 && (
-                <View style={styles.subjectSection}>
-                  <Text style={styles.subjectTitle}>📖 Subjects Studied</Text>
-                  <View style={styles.subjectGrid}>
-                    {Object.entries(userProgress.transcriptData.coursesBySubject).map(([subject, count]) => (
-                      <View key={subject} style={styles.subjectBadge}>
-                        <Text style={styles.subjectName}>{subject}</Text>
-                        <Text style={styles.subjectCount}>{count} courses</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
+              {/* Category Filter for Skills */}
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={styles.skillCategoryScroll}
+              >
+                <Chip
+                  mode={selectedSkillCategory === 'All' ? 'flat' : 'outlined'}
+                  selected={selectedSkillCategory === 'All'}
+                  onPress={() => setSelectedSkillCategory('All')}
+                  style={styles.skillCategoryChip}
+                  textStyle={styles.skillCategoryChipText}
+                >
+                  All
+                </Chip>
+                {skillsData.map(({ category }) => (
+                  <Chip
+                    key={category}
+                    mode={selectedSkillCategory === category ? 'flat' : 'outlined'}
+                    selected={selectedSkillCategory === category}
+                    onPress={() => setSelectedSkillCategory(category)}
+                    style={styles.skillCategoryChip}
+                    textStyle={styles.skillCategoryChipText}
+                  >
+                    {category}
+                  </Chip>
+                ))}
+              </ScrollView>
 
-              {/* Achievements */}
-              {userProgress.transcriptData.achievements.length > 0 && (
-                <View style={styles.achievementSection}>
-                  <Text style={styles.achievementTitle}>🏅 Academic Achievements</Text>
-                  <View style={styles.achievementList}>
-                    {userProgress.transcriptData.achievements.map((achievement, index) => (
-                      <Text key={index} style={styles.achievementItem}>• {achievement}</Text>
-                    ))}
+              {/* Skills Grid */}
+              {skillsData
+                .filter(({ category }) => 
+                  selectedSkillCategory === 'All' || category === selectedSkillCategory
+                )
+                .map(({ category, skills }) => (
+                  <View key={category} style={styles.categorySkillsSection}>
+                    <Text style={styles.categorySkillsTitle}>{category}</Text>
+                    <View style={styles.skillsGrid}>
+                      {skills.map((skill: { name: string; identified: boolean; dateIdentified?: string }) => (
+                        <Chip
+                          key={skill.name}
+                          mode="flat"
+                          selected={skill.identified}
+                          style={[
+                            styles.skillChipItem,
+                            skill.identified ? styles.skillChipIdentified : styles.skillChipUnidentified,
+                          ]}
+                          textStyle={[
+                            styles.skillChipText,
+                            skill.identified ? styles.skillChipTextIdentified : styles.skillChipTextUnidentified,
+                          ]}
+                          icon={() => skill.identified ? (
+                            <MaterialIcons name="check-circle" size={16} color="#4CAF50" />
+                          ) : null}
+                        >
+                          {skill.name}
+                        </Chip>
+                      ))}
+                    </View>
                   </View>
-                </View>
-              )}
+                ))}
 
-              {/* Top Grades */}
-              {userProgress.transcriptData.topGrades.length > 0 && (
-                <View style={styles.gradesSection}>
-                  <Text style={styles.gradesTitle}>⭐ Top Performance</Text>
-                  <View style={styles.gradesList}>
-                    {userProgress.transcriptData.topGrades.slice(0, 3).map((grade, index) => (
-                      <Text key={index} style={styles.gradeItem}>🌟 {grade}</Text>
-                    ))}
-                  </View>
-                </View>
-              )}
+              <Text style={styles.skillsHint}>
+                💡 Identified skills are highlighted in color. Keep analyzing activities to discover more!
+              </Text>
             </Card.Content>
           </Card>
         )}
@@ -578,18 +639,7 @@ export default function DashboardScreen({ route, navigation }: any) {
           </Button>
         </View>
 
-        {/* Tips Section */}
-        <Card style={styles.tipsCard}>
-          <Card.Content>
-            <Text style={styles.tipsTitle}>💡 Tips to Collect More Stamps</Text>
-            <Text style={styles.tipsText}>
-              • Scan transcripts with diverse course subjects{'\n'}
-              • Higher GPAs unlock achievement stamps{'\n'}
-              • Complete degrees to unlock graduation stamps{'\n'}
-              • Look for courses in technology, arts, and sciences
-            </Text>
-          </Card.Content>
-        </Card>
+        {/* Tips Section removed to focus on skills */}
       </ScrollView>
     </View>
   );
@@ -885,5 +935,98 @@ const styles = StyleSheet.create({
     color: '#FF9800',
     marginBottom: 4,
     fontWeight: '500',
+  },
+  // Skills Section Styles
+  skillsCard: {
+    margin: 20,
+    marginTop: 0,
+    elevation: 4,
+    backgroundColor: '#fff',
+  },
+  skillsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 15,
+  },
+  skillsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  skillsStatsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+    paddingVertical: 15,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+  },
+  skillStatItem: {
+    alignItems: 'center',
+  },
+  skillStatNumber: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#667eea',
+  },
+  skillStatLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 5,
+  },
+  skillCategoryScroll: {
+    marginBottom: 20,
+  },
+  skillCategoryChip: {
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  skillCategoryChipText: {
+    fontSize: 13,
+  },
+  categorySkillsSection: {
+    marginBottom: 20,
+  },
+  categorySkillsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#667eea',
+    marginBottom: 10,
+  },
+  skillsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  skillChipItem: {
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  skillChipIdentified: {
+    backgroundColor: '#667eea',
+    elevation: 3,
+  },
+  skillChipUnidentified: {
+    backgroundColor: '#e0e0e0',
+    elevation: 0,
+  },
+  skillChipText: {
+    fontSize: 13,
+  },
+  skillChipTextIdentified: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  skillChipTextUnidentified: {
+    color: '#999',
+  },
+  skillsHint: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 15,
+    fontStyle: 'italic',
+    lineHeight: 20,
   },
 });

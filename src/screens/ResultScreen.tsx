@@ -318,11 +318,11 @@ export default function ResultScreen({ navigation, route }: Props) {
         </Button>
         <Button
           mode="contained"
-          onPress={() => navigation.navigate('Dashboard')}
+          onPress={() => navigation.navigate('SkillsDashboard')}
           style={[styles.button, styles.primaryButton]}
           icon="view-dashboard"
         >
-          View Dashboard
+          View Skills Dashboard
         </Button>
       </View>
     </ScrollView>
@@ -498,11 +498,11 @@ export default function ResultScreen({ navigation, route }: Props) {
             
             <Button
               mode="contained"
-              onPress={() => navigation.navigate('Dashboard')}
+              onPress={() => navigation.navigate('SkillsDashboard')}
               style={[styles.actionButton, styles.dashboardButton]}
               icon="view-dashboard"
             >
-              View Dashboard
+              View Skills Dashboard
             </Button>
             
             <Button

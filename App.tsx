@@ -12,6 +12,7 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import VoiceAnalysisScreen from './src/screens/VoiceAnalysisScreen';
 import TextAnalysisScreen from './src/screens/TextAnalysisScreen';
 import FollowUpQuestionScreen from './src/screens/FollowUpQuestionScreen';
+import SkillsDashboardScreen from './src/screens/SkillsDashboardScreen';
 import { RootStackParamList } from './src/types/navigation';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
@@ -69,6 +70,11 @@ export default function App() {
             name="Dashboard" 
             component={DashboardScreen} 
             options={{ title: 'Achievement Dashboard' }}
+          />
+          <Stack.Screen 
+            name="SkillsDashboard" 
+            component={SkillsDashboardScreen} 
+            options={{ title: 'Skills Dashboard' }}
           />
           <Stack.Screen 
             name="VoiceAnalysis" 
