@@ -561,4 +561,234 @@ Analyze the image carefully and provide thoughtful insights about the skills bei
       };
     }
   }
+
+  /**
+   * Dialogue-based Category Mapping Functions
+   * Matching web app implementation
+   */
+
+  /**
+   * Helper: Retry with exponential backoff for rate limits
+   */
+  private static async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 4,
+    initialDelay: number = 2000
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        
+        // Check if it's a rate limit error (429)
+        if (axios.isAxiosError(error) && error.response?.status === 429) {
+          const delay = initialDelay * Math.pow(2, attempt);
+          console.log(`Rate limit hit. Retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        // For other errors, throw immediately
+        throw error;
+      }
+    }
+    
+    throw lastError;
+  }
+
+  /**
+   * Synthesize next question based on conversation history
+   */
+  public static async synthesizeNextQuestion(
+    interactions: Array<{ question: string; answer: string; mappedCategory: string }>,
+    mappedCategories: Array<{ category: string }>,
+    taxonomyString: string
+  ): Promise<string> {
+    try {
+      const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      
+      const history = interactions
+        .map(i => `Q: ${i.question} | A: ${i.answer} | Mapped: ${i.mappedCategory}`)
+        .join('\n');
+      
+      const mappedCategoriesList = mappedCategories.map(c => c.category).join(', ');
+      
+      const prompt = `Based on all our interactions so far, the taxonomy (including the NO_OP category as a mapping option), and the categories mapped to me so far, synthesize a new question that might help tease out which additional categories might map to me. You may (optionally) use what you've learned about me in previous answers as context in the question if it helps.
+      
+HISTORY:
+${history}
+
+TAXONOMY:
+${taxonomyString}
+
+CATEGORIES MAPPED: ${mappedCategoriesList}
+      
+RESPOND ONLY with the text of the new question. Do not include any other text, explanation, or formatting.`;
+
+      console.log('Synthesizing next question...');
+      
+      const requestBody = {
+        contents: [
+          {
+            parts: [{ text: prompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 200,
+        }
+      };
+
+      // Use retry logic with exponential backoff
+      const response = await this.retryWithBackoff(async () => {
+        return await axios.post(apiUrl, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+        });
+      });
+
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+        throw new Error('No question generated from API');
+      }
+
+      const question = text.trim();
+      console.log('Synthesized question:', question);
+      
+      return question;
+      
+    } catch (error) {
+      console.error('Error synthesizing question:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+        } else if (error.response?.status === 403) {
+          throw new Error('API key invalid or missing. Check your .env file.');
+        } else if (error.response) {
+          throw new Error(`API Error: ${error.response.status} - ${error.response.statusText}`);
+        } else if (error.request) {
+          throw new Error('Network error. Please check your internet connection.');
+        }
+      }
+      
+      throw new Error('Failed to generate next question');
+    }
+  }
+
+  /**
+   * Map user answer to category with NO_OP support
+   */
+  public static async mapAnswerToCategory(
+    question: string,
+    answer: string,
+    isInitial: boolean,
+    taxonomyString: string,
+    mappedCategories: Array<{ category: string }>
+  ): Promise<{
+    category: string;
+    justification: string;
+  }> {
+    try {
+      // Add mandatory delay to avoid hitting rate limits
+      console.log('Waiting 1.5 seconds before mapping to avoid rate limits...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      
+      const systemInstruction = `You are a sophisticated trait mapper. Your task is to analyze user input and map it to the single most applicable category from the provided taxonomy. **Crucially, you must only map to a real category if the answer obviously and rigorously fits. If the fit is weak, uncertain, or the answer is generic, you MUST choose the 'NO_MAP_WEAK_FIT' category.** The taxonomy includes descriptions and sample experience stamps to guide your decision. You MUST respond with a valid JSON object with fields: "category" (the exact category name) and "justification" (a short, two-sentence summary, max 30 words, explaining why this user's answer maps to the chosen category).`;
+      
+      let userPrompt: string;
+      
+      if (isInitial) {
+        userPrompt = `I have been asked "${question}". My answer to the question is "${answer}". 
+Take this information along with the full taxonomy below, and decide which category in the taxonomy is most likely applicable to me.
+
+TAXONOMY:
+${taxonomyString}`;
+      } else {
+        const mappedCategoryNames = mappedCategories.map(c => c.category);
+        const mappedCategoriesList = mappedCategoryNames.join(', ');
+        
+        userPrompt = `I have been asked "${question}". My answer to the question is "${answer}". 
+Take this information along with the full taxonomy, the list of categories already mapped to me, and decide which category in the taxonomy that is STILL NOT MAPPED TO ME is most likely applicable to me based on the last question/answer, or choose 'NO_MAP_WEAK_FIT' if the mapping is not rigorous.
+
+TAXONOMY:
+${taxonomyString}
+
+CATEGORIES ALREADY MAPPED: ${mappedCategoriesList}`;
+      }
+
+      console.log('Mapping answer to category...');
+      
+      const requestBody = {
+        contents: [
+          {
+            parts: [{ text: systemInstruction + '\n\n' + userPrompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 300,
+          responseMimeType: 'application/json',
+        }
+      };
+
+      // Use retry logic with exponential backoff
+      const response = await this.retryWithBackoff(async () => {
+        return await axios.post(apiUrl, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+        });
+      });
+
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+        throw new Error('No mapping response from API');
+      }
+
+      console.log('Raw mapping response:', text);
+      
+      // Parse JSON response
+      const jsonResponse = JSON.parse(text);
+      
+      if (!jsonResponse.category || !jsonResponse.justification) {
+        throw new Error('Invalid response format from API');
+      }
+
+      console.log('Mapped to category:', jsonResponse.category);
+      console.log('Justification:', jsonResponse.justification);
+      
+      return {
+        category: jsonResponse.category,
+        justification: jsonResponse.justification
+      };
+      
+    } catch (error) {
+      console.error('Error mapping answer to category:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+        } else if (error.response?.status === 403) {
+          throw new Error('API key invalid or missing. Check your .env file.');
+        } else if (error.response) {
+          throw new Error(`API Error: ${error.response.status} - ${error.response.statusText}`);
+        } else if (error.request) {
+          throw new Error('Network error. Please check your internet connection.');
+        }
+      }
+      
+      if (error instanceof Error && error.message.includes('JSON')) {
+        throw new Error('Failed to parse API response. Please try again.');
+      }
+      
+      throw new Error('Failed to map answer to category');
+    }
+  }
 }
