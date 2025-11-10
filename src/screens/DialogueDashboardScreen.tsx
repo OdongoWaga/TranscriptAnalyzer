@@ -317,15 +317,17 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       const isInitial = mappedCategories.length === 0;
       const taxonomyString = getTaxonomyString();
 
-      const result = await GeminiService.mapAnswerToCategory(
+      // Use combined API call to map answer AND generate next question in one request
+      const result = await GeminiService.mapAnswerAndGenerateNextQuestion(
         question,
         answer,
         isInitial,
-        taxonomyString,
-        mappedCategories
+        interactions,
+        mappedCategories,
+        taxonomyString
       );
 
-      const { category: rawCategory, justification } = result;
+      const { category: rawCategory, justification, nextQuestion } = result;
 
       // Validate category
       const validCategory = findValidCategory(rawCategory);
@@ -406,10 +408,16 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
 
       setUserAnswer('');
 
-      // Prefetch next question if not complete - with a delay to avoid rate limits
-      if (mappingResult !== 'COMPLETE' && mappingResult !== 'MAPPING_FAILED') {
+      // Use the next question that was generated in the same API call
+      // No need to prefetch separately - we already have it!
+      if (mappingResult !== 'COMPLETE' && mappingResult !== 'MAPPING_FAILED' && nextQuestion) {
+        console.log('Using next question from combined API response:', nextQuestion);
+        setPrefetchedQuestion(nextQuestion);
+        setIsPrefetching(false);
+      } else if (mappingResult !== 'COMPLETE' && mappingResult !== 'MAPPING_FAILED') {
+        // Fallback: only prefetch if the combined call didn't return a question
+        console.log('Next question not returned, falling back to separate prefetch');
         setIsPrefetching(true);
-        // Add 2-second delay before prefetching to avoid hitting rate limits
         setTimeout(() => {
           getNextQuestion(true);
         }, 2000);

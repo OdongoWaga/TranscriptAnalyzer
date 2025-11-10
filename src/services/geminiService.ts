@@ -610,6 +610,146 @@ Analyze the image carefully and provide thoughtful insights about the skills bei
   /**
    * Synthesize next question based on conversation history
    */
+  
+  public static async mapAnswerAndGenerateNextQuestion(
+    question: string,
+    answer: string,
+    isInitial: boolean,
+    interactions: Array<{ question: string; answer: string; mappedCategory: string }>,
+    mappedCategories: Array<{ category: string }>,
+    taxonomyString: string
+  ): Promise<{
+    category: string;
+    justification: string;
+    nextQuestion: string | null;
+  }> {
+    try {
+      // Add mandatory delay to avoid hitting rate limits
+      console.log('Waiting 1.5 seconds before combined API call...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      
+      const mappedCategoryNames = mappedCategories.map(c => c.category);
+      const mappedCategoriesList = mappedCategoryNames.join(', ');
+      
+      const history = interactions
+        .map(i => `Q: ${i.question} | A: ${i.answer} | Mapped: ${i.mappedCategory}`)
+        .join('\n');
+      
+      let systemInstruction: string;
+      let userPrompt: string;
+      
+      if (isInitial) {
+        systemInstruction = `You are a sophisticated trait mapper and question generator. Your task is to:
+1. Analyze the user's answer and map it to the single most applicable category from the provided taxonomy. **Crucially, you must only map to a real category if the answer obviously and rigorously fits. If the fit is weak, uncertain, or the answer is generic, you MUST choose the 'NO_MAP_WEAK_FIT' category.**
+2. Generate a thoughtful follow-up question that might help identify additional categories.
+
+You MUST respond with a valid JSON object with these fields:
+- "category": the exact category name from the taxonomy
+- "justification": a short, two-sentence summary (max 30 words) explaining why this user's answer maps to the chosen category
+- "nextQuestion": a new question to help identify more categories (or null if all categories are mapped)`;
+
+        userPrompt = `I have been asked "${question}". My answer is "${answer}".
+
+TAXONOMY:
+${taxonomyString}
+
+Analyze my answer, map it to the most appropriate category, and generate a follow-up question to explore other potential categories.`;
+      } else {
+        systemInstruction = `You are a sophisticated trait mapper and question generator. Your task is to:
+1. Analyze the user's answer and map it to the single most applicable category from the provided taxonomy that is STILL NOT MAPPED. **Crucially, you must only map to a real category if the answer obviously and rigorously fits. If the fit is weak, uncertain, or the answer is generic, you MUST choose the 'NO_MAP_WEAK_FIT' category.**
+2. Generate a thoughtful follow-up question based on conversation history that might help identify additional unmapped categories.
+
+You MUST respond with a valid JSON object with these fields:
+- "category": the exact category name from the taxonomy (must not be in already-mapped list)
+- "justification": a short, two-sentence summary (max 30 words) explaining why this user's answer maps to the chosen category
+- "nextQuestion": a new question to help identify more categories (or null if all categories are mapped)`;
+
+        userPrompt = `I have been asked "${question}". My answer is "${answer}".
+
+CONVERSATION HISTORY:
+${history}
+
+TAXONOMY:
+${taxonomyString}
+
+CATEGORIES ALREADY MAPPED: ${mappedCategoriesList}
+
+Analyze my answer, map it to an unmapped category (or NO_MAP_WEAK_FIT), and generate a follow-up question that uses context from our conversation.`;
+      }
+
+      console.log('Combined API call: mapping answer + generating next question...');
+      
+      const requestBody = {
+        contents: [
+          {
+            parts: [{ text: systemInstruction + '\n\n' + userPrompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.5, // Balanced between mapping (0.3) and question generation (0.9)
+          maxOutputTokens: 500, // Enough for both tasks
+          responseMimeType: 'application/json',
+        }
+      };
+
+      // Use retry logic with exponential backoff
+      const response = await this.retryWithBackoff(async () => {
+        return await axios.post(apiUrl, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+        });
+      });
+
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+        throw new Error('No response from API');
+      }
+
+      console.log('Raw combined response:', text);
+      
+      // Parse JSON response
+      const jsonResponse = JSON.parse(text);
+      
+      if (!jsonResponse.category || !jsonResponse.justification) {
+        throw new Error('Invalid response format from API');
+      }
+
+      console.log('Mapped to category:', jsonResponse.category);
+      console.log('Justification:', jsonResponse.justification);
+      console.log('Next question:', jsonResponse.nextQuestion);
+      
+      return {
+        category: jsonResponse.category,
+        justification: jsonResponse.justification,
+        nextQuestion: jsonResponse.nextQuestion || null
+      };
+      
+    } catch (error) {
+      console.error('Error in combined mapping + question generation:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+        } else if (error.response?.status === 403) {
+          throw new Error('API key invalid or missing. Check your .env file.');
+        } else if (error.response) {
+          throw new Error(`API Error: ${error.response.status} - ${error.response.statusText}`);
+        } else if (error.request) {
+          throw new Error('Network error. Please check your internet connection.');
+        }
+      }
+      
+      if (error instanceof Error && error.message.includes('JSON')) {
+        throw new Error('Failed to parse API response. Please try again.');
+      }
+      
+      throw new Error('Failed to process answer and generate question');
+    }
+  }
+
   public static async synthesizeNextQuestion(
     interactions: Array<{ question: string; answer: string; mappedCategory: string }>,
     mappedCategories: Array<{ category: string }>,
