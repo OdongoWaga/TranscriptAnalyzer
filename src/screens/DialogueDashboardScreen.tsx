@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -12,6 +12,8 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Image,
 } from 'react-native';
 import {
   Text,
@@ -45,6 +47,9 @@ import {
   isCategoryMapped,
 } from '../services/categoryStorageService';
 import { GeminiService } from '../services/geminiService';
+import { ImagePickerService } from '../services/imagePickerService';
+import ZoomableImageView from '../components/ZoomableImageView';
+import ImageEditor from '../components/ImageEditor';
 
 const { width } = Dimensions.get('window');
 
@@ -73,6 +78,21 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
   const [savedQuestion, setSavedQuestion] = useState(''); // Store question for weak-fit retry
   const [showConfetti, setShowConfetti] = useState(false);
   const confettiRef = React.useRef<any>(null);
+  
+  // Image handling state
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [tempImageUri, setTempImageUri] = useState<string | null>(null);
+  const [zoomViewerVisible, setZoomViewerVisible] = useState(false);
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  
+  // FAB animation state
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const fabAnimation = useRef(new Animated.Value(0)).current;
+  const button1Animation = useRef(new Animated.Value(0)).current;
+  const button2Animation = useRef(new Animated.Value(0)).current;
+  const button3Animation = useRef(new Animated.Value(0)).current;
+  const rotateAnimation = useRef(new Animated.Value(0)).current;
 
   // Configure navigation header with reset button
   React.useLayoutEffect(() => {
@@ -111,6 +131,110 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
   useEffect(() => {
     console.log('State changed:', { uiState, currentPrompt: currentPrompt.substring(0, 50) + '...', hasPrompt: !!currentPrompt });
   }, [uiState, currentPrompt]);
+
+  // FAB animation functions
+  const toggleFabMenu = () => {
+    const toValue = isFabOpen ? 0 : 1;
+    
+    Animated.parallel([
+      Animated.spring(fabAnimation, {
+        toValue,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.spring(rotateAnimation, {
+        toValue,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.stagger(50, [
+        Animated.spring(button1Animation, {
+          toValue,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }),
+        Animated.spring(button2Animation, {
+          toValue,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }),
+        Animated.spring(button3Animation, {
+          toValue,
+          useNativeDriver: true,
+          tension: 100,
+          friction: 8,
+        }),
+      ]),
+    ]).start();
+    
+    setIsFabOpen(!isFabOpen);
+  };
+
+  const rotation = rotateAnimation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '45deg'],
+  });
+
+  const button1Style = {
+    transform: [
+      {
+        translateX: button1Animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -96],
+        }),
+      },
+      {
+        scale: button1Animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 1],
+        }),
+      },
+    ],
+  };
+
+  const button2Style = {
+    transform: [
+      {
+        translateX: button2Animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -68],
+        }),
+      },
+      {
+        translateY: button2Animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -68],
+        }),
+      },
+      {
+        scale: button2Animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 1],
+        }),
+      },
+    ],
+  };
+
+  const button3Style = {
+    transform: [
+      {
+        translateY: button3Animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, -96],
+        }),
+      },
+      {
+        scale: button3Animation.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 1],
+        }),
+      },
+    ],
+  };
 
   const loadData = async () => {
     try {
@@ -307,8 +431,13 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
 
   const handleFabClick = () => {
     if (uiState !== 'idle') return;
+    toggleFabMenu();
+  };
 
-    console.log('FAB clicked. State:', { 
+  const handleTextInputPress = () => {
+    toggleFabMenu();
+    
+    console.log('Text input selected. State:', { 
       mappedCount: mappedCategories.length, 
       hasPrefetched: !!prefetchedQuestion,
       isPrefetching,
@@ -335,6 +464,132 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       // Fallback: synchronous fetch
       console.log('No prefetch available, fetching new question synchronously');
       getNextQuestion(false);
+    }
+  };
+
+  const handleVoiceInputPress = () => {
+    toggleFabMenu();
+    // Navigate to voice analysis screen
+    navigation.navigate('VoiceAnalysis');
+  };
+
+  const handleImageInputPress = async () => {
+    toggleFabMenu();
+    
+    // First get or generate a question
+    if (mappedCategories.length === 0) {
+      setCurrentPrompt(INITIAL_PROMPT);
+      setSavedQuestion(INITIAL_PROMPT);
+    } else if (prefetchedQuestion) {
+      setCurrentPrompt(prefetchedQuestion);
+      setSavedQuestion(prefetchedQuestion);
+      setPrefetchedQuestion(null);
+    } else if (!currentPrompt) {
+      // Need to fetch a question first
+      setUiState('loading');
+      setLoadingMessage('Preparing your question...');
+      await getNextQuestion(false);
+      return;
+    }
+    
+    // Wait for FAB animation to complete, then show choice dialog
+    setTimeout(() => {
+      Alert.alert(
+        'Choose Image Source',
+        'How would you like to add your image?',
+        [
+          {
+            text: 'Take Photo',
+            onPress: () => handleImageSelection(true), // Use camera
+          },
+          {
+            text: 'Choose from Gallery',
+            onPress: () => handleImageSelection(false), // Use gallery
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ],
+        { cancelable: true }
+      );
+    }, 300);
+  };
+
+  const handleImageSelection = async (useCamera: boolean) => {
+    try {
+      const hasPermissions = await ImagePickerService.requestPermissions();
+      if (!hasPermissions) {
+        Alert.alert(
+          'Permissions Required',
+          'Camera and photo library permissions are required to use this feature.'
+        );
+        return;
+      }
+
+      let result;
+      if (useCamera) {
+        result = await ImagePickerService.takePhotoWithCamera();
+      } else {
+        result = await ImagePickerService.pickImageFromGalleryWithOptions(false);
+      }
+
+      if (result.success && result.imageUri) {
+        setTempImageUri(result.imageUri);
+        setShowImageEditor(true);
+      } else if (result.error) {
+        Alert.alert('Error', result.error);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred while selecting image');
+    }
+  };
+
+  const handleImageEditorSave = (editedImageUri: string) => {
+    setSelectedImage(editedImageUri);
+    setShowImageEditor(false);
+    setTempImageUri(null);
+    setUiState('answering'); // Show the answer modal with image preview
+  };
+
+  const handleImageEditorCancel = () => {
+    setShowImageEditor(false);
+    setTempImageUri(null);
+    setUiState('idle');
+  };
+
+  const handleSubmitImage = async () => {
+    if (!selectedImage || !currentPrompt) {
+      Alert.alert('Error', 'Missing image or question');
+      return;
+    }
+
+    setIsAnalyzingImage(true);
+    setUiState('loading');
+    setLoadingMessage('Analyzing your image response...');
+
+    try {
+      // Analyze the image with Gemini
+      const analysisResult = await GeminiService.analyzeActionImage(selectedImage);
+      
+      if (!analysisResult.success || !analysisResult.rawResponse) {
+        throw new Error(analysisResult.error || 'Failed to analyze image');
+      }
+
+      // Use the image analysis description as the answer
+      const answer = analysisResult.rawResponse;
+      
+      // Clear image state
+      setSelectedImage(null);
+      
+      // Map the answer to a category
+      await mapAnswerToCategory(currentPrompt, answer);
+    } catch (error) {
+      console.error('Error processing image:', error);
+      Alert.alert('Error', 'Failed to process image. Please try again.');
+      setUiState('idle');
+    } finally {
+      setIsAnalyzingImage(false);
     }
   };
 
@@ -623,22 +878,74 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
                 <View style={styles.modalContent}>
                   <Text style={styles.questionTitle}>Question for You</Text>
                   <Text style={styles.questionText}>{currentPrompt || '(No question loaded)'}</Text>
-                  <TextInput
-                    style={styles.answerInput}
-                    value={userAnswer}
-                    onChangeText={setUserAnswer}
-                    placeholder="Example: 'I led a team of 5 students to build a mobile app that helps local farmers track inventory. We used React Native and Firebase, and it's now used by 50+ farmers in our community.'"
-                    placeholderTextColor="#999"
-                    multiline
-                    numberOfLines={4}
-                    textAlignVertical="top"
-                  />
-                  <TouchableOpacity
-                    style={styles.submitButton}
-                    onPress={handleSubmitAnswer}
-                  >
-                    <Text style={styles.submitButtonText}>Submit Answer</Text>
-                  </TouchableOpacity>
+                  
+                  {selectedImage ? (
+                    /* Image Answer Mode */
+                    <>
+                      <TouchableOpacity onPress={() => setZoomViewerVisible(true)}>
+                        <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+                      </TouchableOpacity>
+                      <View style={styles.imageActions}>
+                        <TouchableOpacity
+                          style={styles.changeImageButton}
+                          onPress={() => {
+                            setSelectedImage(null);
+                            // Show the same choice dialog when changing image
+                            Alert.alert(
+                              'Choose Image Source',
+                              'How would you like to add your image?',
+                              [
+                                {
+                                  text: 'Take Photo',
+                                  onPress: () => handleImageSelection(true),
+                                },
+                                {
+                                  text: 'Choose from Gallery',
+                                  onPress: () => handleImageSelection(false),
+                                },
+                                {
+                                  text: 'Cancel',
+                                  style: 'cancel',
+                                },
+                              ],
+                              { cancelable: true }
+                            );
+                          }}
+                        >
+                          <Text style={styles.changeImageButtonText}>Change Image</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.submitButton}
+                          onPress={handleSubmitImage}
+                          disabled={isAnalyzingImage}
+                        >
+                          <Text style={styles.submitButtonText}>
+                            {isAnalyzingImage ? 'Analyzing...' : 'Submit Image'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  ) : (
+                    /* Text Answer Mode */
+                    <>
+                      <TextInput
+                        style={styles.answerInput}
+                        value={userAnswer}
+                        onChangeText={setUserAnswer}
+                        placeholder="Example: 'I led a team of 5 students to build a mobile app that helps local farmers track inventory. We used React Native and Firebase, and it's now used by 50+ farmers in our community.'"
+                        placeholderTextColor="#999"
+                        multiline
+                        numberOfLines={4}
+                        textAlignVertical="top"
+                      />
+                      <TouchableOpacity
+                        style={styles.submitButton}
+                        onPress={handleSubmitAnswer}
+                      >
+                        <Text style={styles.submitButtonText}>Submit Answer</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
                 </View>
               </TouchableWithoutFeedback>
             </View>
@@ -646,15 +953,85 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* FAB Button */}
-      <FAB
-        style={[styles.fab, styles.fabAdd]}
-        icon="plus"
-        onPress={handleFabClick}
-        disabled={uiState !== 'idle' || mappedCategories.length === TOTAL_CATEGORIES}
-        label="Start"
-        color="#fff"
-      />
+      {/* Animated FAB Buttons */}
+      <View style={styles.fabContainer}>
+        <View style={styles.fabInner}>
+          {/* Action Button 1 - Text Input (Left) */}
+          <Animated.View style={[styles.actionButton, button1Style]} pointerEvents="auto">
+            <FAB
+              icon={() => (
+                <View style={styles.iconContainer}>
+                  <MaterialIcons name="chat-bubble" size={24} color="white" />
+                </View>
+              )}
+              onPress={handleTextInputPress}
+              style={[styles.fab, { backgroundColor: '#45B7D1' }]}
+              size="small"
+            />
+          </Animated.View>
+
+          {/* Action Button 2 - Voice Input (Diagonal) */}
+          <Animated.View style={[styles.actionButton, button2Style]} pointerEvents="auto">
+            <FAB
+              icon={() => (
+                <View style={styles.iconContainer}>
+                  <MaterialIcons name="mic" size={24} color="white" />
+                </View>
+              )}
+              onPress={handleVoiceInputPress}
+              style={[styles.fab, { backgroundColor: '#4ECDC4' }]}
+              size="small"
+            />
+          </Animated.View>
+
+          {/* Action Button 3 - Image Input (Top) */}
+          <Animated.View style={[styles.actionButton, button3Style]} pointerEvents="auto">
+            <FAB
+              icon={() => (
+                <View style={styles.iconContainer}>
+                  <MaterialIcons name="image" size={24} color="white" />
+                </View>
+              )}
+              onPress={handleImageInputPress}
+              style={[styles.fab, { backgroundColor: '#FF6B6B' }]}
+              size="small"
+            />
+          </Animated.View>
+
+          {/* Main FAB */}
+          <Animated.View style={[styles.mainFabWrapper, { transform: [{ rotate: rotation }] }]}>
+            <FAB
+              icon={() => (
+                <View style={styles.iconContainer}>
+                  <MaterialIcons name="add" size={28} color="white" />
+                </View>
+              )}
+              onPress={handleFabClick}
+              disabled={uiState !== 'idle' || mappedCategories.length === TOTAL_CATEGORIES}
+              style={[styles.mainFab, { backgroundColor: '#667eea' }]}
+              label={!isFabOpen ? "Start" : undefined}
+            />
+          </Animated.View>
+        </View>
+      </View>
+
+      {/* Image Editor Modal */}
+      {showImageEditor && tempImageUri && (
+        <ImageEditor
+          imageUri={tempImageUri}
+          onSave={handleImageEditorSave}
+          onCancel={handleImageEditorCancel}
+        />
+      )}
+
+      {/* Zoom Viewer Modal */}
+      {zoomViewerVisible && selectedImage && (
+        <ZoomableImageView
+          imageUri={selectedImage}
+          visible={zoomViewerVisible}
+          onClose={() => setZoomViewerVisible(false)}
+        />
+      )}
 
       {/* Confetti Animation */}
       {showConfetti && (
@@ -958,13 +1335,71 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
   },
-  fab: {
+  fabContainer: {
     position: 'absolute',
-    bottom: 20,
-    right: 20,
-    elevation: 8,
+    bottom: 30,
+    right: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabInner: {
+    position: 'relative',
+    width: 56,
+    height: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mainFab: {
+    position: 'absolute',
+    margin: 0,
+    elevation: 6,
+  },
+  mainFabWrapper: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionButton: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fab: {
+    elevation: 6,
   },
   fabAdd: {
     backgroundColor: '#667eea',
+  },
+  iconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 15,
+  },
+  imageActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  changeImageButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#667eea',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  changeImageButtonText: {
+    color: '#667eea',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });

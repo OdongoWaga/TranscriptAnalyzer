@@ -255,6 +255,10 @@ Extract all visible course information accurately. If information is not clear, 
     try {
       console.log('Starting audio transcription for:', audioUri);
       
+      // Add a mandatory delay to prevent rate limiting
+      console.log('Waiting before audio transcription request...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       // Determine MIME type based on file extension
       let mimeType = 'audio/wav';
       if (audioUri.includes('.m4a')) {
@@ -268,13 +272,21 @@ Extract all visible course information accurately. If information is not clear, 
       console.log('Detected audio format:', mimeType);
       
       // Encode audio to base64
+      // Get audio file info first
+      const fileInfo = await FileSystem.getInfoAsync(audioUri);
+      const fileSizeMB = fileInfo.exists && 'size' in fileInfo ? (fileInfo.size / (1024 * 1024)).toFixed(2) : 'unknown';
+      console.log(`Audio file size: ${fileSizeMB} MB`);
+      
       const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
         encoding: 'base64' as any,
       });
       
-      console.log('Audio encoded to base64, size:', base64Audio.length, 'characters');
+      const base64SizeMB = (base64Audio.length / (1024 * 1024)).toFixed(2);
+      console.log(`Audio encoded to base64, size: ${base64Audio.length} characters (${base64SizeMB} MB)`);
       
+      // Use the same API URL as image parsing (gemini-2.0-flash) which supports audio
       const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      
       const requestBody = {
         contents: [
           {
@@ -297,27 +309,16 @@ Extract all visible course information accurately. If information is not clear, 
         }
       };
 
-      let response;
-      try {
-        response = await axios.post(apiUrl, requestBody, {
+      // Use retry logic for rate limiting
+      const makeTranscriptionRequest = async () => {
+        const response = await axios.post(apiUrl, requestBody, {
           headers: { 'Content-Type': 'application/json' },
           timeout: CONFIG.REQUEST_TIMEOUT,
         });
-      } catch (error) {
-        // Try fallback model if primary fails
-        if (axios.isAxiosError(error) && error.response?.status === 404) {
-          console.log('Primary model failed for audio, trying fallback...');
-          const fallbackUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
-          const fallbackApiUrl = `${fallbackUrl}?key=${getGeminiApiKey()}`;
-          
-          response = await axios.post(fallbackApiUrl, requestBody, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: CONFIG.REQUEST_TIMEOUT,
-          });
-        } else {
-          throw error;
-        }
-      }
+        return response;
+      };
+
+      const response = await GeminiService.retryWithBackoff(makeTranscriptionRequest);
 
       const transcript = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!transcript) {
@@ -339,7 +340,14 @@ Extract all visible course information accurately. If information is not clear, 
       let errorMessage = 'Audio transcription failed';
       if (axios.isAxiosError(error)) {
         if (error.response) {
+          // Log the full error response for debugging
+          console.error('API Error Response:', JSON.stringify(error.response.data, null, 2));
           errorMessage = `API Error: ${error.response.status} - ${error.response.statusText}`;
+          
+          // Add more specific error details if available
+          if (error.response.data?.error?.message) {
+            errorMessage += ` - ${error.response.data.error.message}`;
+          }
         } else if (error.request) {
           errorMessage = 'Network Error: No response from server';
         } else {

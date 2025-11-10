@@ -232,15 +232,40 @@ export default function FollowUpQuestionScreen({ navigation, route }: Props) {
   // Handle photo button press
   const handlePhotoPress = () => {
     toggleMenu();
-    setInputMode('image');
-    handleImageSelection(false, false);
+    
+    // Use setTimeout to ensure the FAB menu animation completes before showing Alert
+    setTimeout(() => {
+      setInputMode('image');
+      
+      // Show options to choose between camera and gallery
+      Alert.alert(
+        'Choose Image Source',
+        'How would you like to add your image?',
+        [
+          {
+            text: 'Take Photo',
+            onPress: () => handleImageSelection(true, false), // Use camera
+          },
+          {
+            text: 'Choose from Gallery',
+            onPress: () => handleImageSelection(false, false), // Use gallery
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => setInputMode('none'),
+          },
+        ],
+        { cancelable: true, onDismiss: () => setInputMode('none') }
+      );
+    }, 300); // Wait for FAB animation to complete
   };
 
   // Handle voice button press
   const handleVoicePress = () => {
     toggleMenu();
     setInputMode('voice');
-    navigation.navigate('VoiceAnalysis');
+    navigation.navigate('VoiceAnalysis', { question, context });
   };
 
   // Handle text button press
