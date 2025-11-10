@@ -228,6 +228,40 @@ Format your response as a thoughtful analysis that helps them understand their s
     setRecordingDuration(0);
   };
 
+  const generateFollowUpQuestion = (): string => {
+    const categories = Object.keys(identifiedSkills);
+    const firstCategory = categories[0];
+    const firstSkill = firstCategory ? identifiedSkills[firstCategory]?.[0] : undefined;
+    if (categories.includes('Creative Expression')) {
+      return 'Would you create a small piece this week (e.g., a 60-second reel, a sketch, or a short story) to explore this interest?';
+    }
+    if (categories.includes('Maker & Builder')) {
+      return 'What quick prototype could you build in the next 2–3 hours to test an idea from this activity?';
+    }
+    if (categories.includes('Meta-Learning')) {
+      return 'What is one question you’re curious about here, and how would you research it?';
+    }
+    if (categories.includes('Human Skills')) {
+      return 'Who could you share or collaborate with this week to amplify your impact or get feedback?';
+    }
+    if (categories.includes('Problem-Solving')) {
+      return 'What challenge did you hit during this activity, and how might you approach it differently next time?';
+    }
+    if (categories.includes('Civic Impact')) {
+      return 'Is there a community or cause that could benefit from this—what’s one small action you could take?';
+    }
+    if (categories.includes('Work Experience')) {
+      return 'Is there a real-world context (internship, freelance, volunteer) where you could apply this in the next month?';
+    }
+    if (categories.includes('Future Self')) {
+      return 'If this became part of your routine, what would “leveling up” look like in 30 days?';
+    }
+    if (firstSkill) {
+      return `Which part of this activity best builds ${firstSkill}, and how could you double that time next week?`;
+    }
+    return 'What is one small next step you could take to explore this interest further?';
+  };
+
   return (
     <LinearGradient colors={['#4c669f', '#3b5998', '#192f6a']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -283,6 +317,15 @@ Format your response as a thoughtful analysis that helps them understand their s
             <Card.Content>
               <Title style={styles.sectionTitle}>Skills Analysis:</Title>
               <Paragraph style={styles.analysisText}>{analysis}</Paragraph>
+            </Card.Content>
+          </Card>
+        )}
+
+        {(analysis || transcript) && (
+          <Card style={styles.resultCard}>
+            <Card.Content>
+              <Title style={styles.sectionTitle}>🧩 Follow-up Question</Title>
+              <Paragraph style={styles.analysisText}>{generateFollowUpQuestion()}</Paragraph>
             </Card.Content>
           </Card>
         )}

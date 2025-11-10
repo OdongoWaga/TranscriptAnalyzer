@@ -1,6 +1,8 @@
 import { AnalysisResult } from './index';
 
 export type RootStackParamList = {
+  Login: undefined;
+  Register: undefined;
   Welcome: undefined;
   Home: undefined;
   Result: { result: AnalysisResult };

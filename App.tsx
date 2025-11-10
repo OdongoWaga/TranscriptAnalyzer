@@ -12,6 +12,8 @@ import DashboardScreen from './src/screens/DashboardScreen';
 import VoiceAnalysisScreen from './src/screens/VoiceAnalysisScreen';
 import TextAnalysisScreen from './src/screens/TextAnalysisScreen';
 import { RootStackParamList } from './src/types/navigation';
+import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
@@ -21,7 +23,7 @@ export default function App() {
       <NavigationContainer>
         <StatusBar style="auto" />
         <Stack.Navigator 
-          initialRouteName="Welcome"
+          initialRouteName="Login"
           screenOptions={{
             headerStyle: {
               backgroundColor: '#2196F3',
@@ -32,6 +34,16 @@ export default function App() {
             },
           }}
         >
+          <Stack.Screen 
+            name="Login" 
+            component={LoginScreen} 
+            options={{ title: 'Sign In', headerShown: false }}
+          />
+          <Stack.Screen 
+            name="Register" 
+            component={RegisterScreen} 
+            options={{ title: 'Create Account', headerShown: false }}
+          />
           <Stack.Screen 
             name="Welcome" 
             component={WelcomeScreen} 

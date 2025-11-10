@@ -65,17 +65,18 @@ export class GeminiService {
   }
   private static async encodeImageToBase64(imageUri: string): Promise<string> {
     try {
+      console.log('Encoding image from URI:', imageUri);
+      
       // Get file info to check size
       const fileInfo = await FileSystem.getInfoAsync(imageUri);
       const fileSize = (fileInfo as any)?.size as number | undefined;
       if (fileSize != null) {
-        console.log('Image file size:', fileSize, 'bytes');
+        console.log('Image file size:', fileSize, 'bytes', '(' + (fileSize / 1024 / 1024).toFixed(2) + ' MB)');
       }
       
       // Check if file is too large (max 4MB for API)
       if (fileSize && fileSize > CONFIG.MAX_IMAGE_SIZE) {
-        console.warn('Image is too large, attempting to compress...');
-        // For now, we'll proceed but warn the user
+        throw new Error(`Image is too large (${(fileSize / 1024 / 1024).toFixed(2)} MB). Maximum size is ${CONFIG.MAX_IMAGE_SIZE / 1024 / 1024} MB.`);
       }
       
       const base64 = await FileSystem.readAsStringAsync(imageUri, {
@@ -83,7 +84,7 @@ export class GeminiService {
         encoding: 'base64' as any,
       });
       
-      console.log('Base64 encoded image size:', base64.length, 'characters');
+      console.log('Base64 encoded image size:', base64.length, 'characters', '(' + (base64.length / 1024 / 1024).toFixed(2) + ' MB)');
       
       // Check if base64 is too large (API limit is around 20MB)
       if (base64.length > 20 * 1024 * 1024) {
