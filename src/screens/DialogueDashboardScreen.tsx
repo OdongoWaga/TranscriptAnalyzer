@@ -90,6 +90,11 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
   // Input method modal state
   const [showInputMethodModal, setShowInputMethodModal] = useState(false);
   
+  // Debug useEffect to monitor showInputMethodModal changes
+  useEffect(() => {
+    console.log('showInputMethodModal changed to:', showInputMethodModal);
+  }, [showInputMethodModal]);
+  
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -475,13 +480,16 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
   
   const handleInputMethodSelect = (method: 'text' | 'voice' | 'image') => {
     setShowInputMethodModal(false);
-    if (method === 'text') {
-      handleTextInputPress();
-    } else if (method === 'voice') {
-      handleVoiceInputPress();
-    } else if (method === 'image') {
-      handleImageInputPress();
-    }
+    // Small delay to ensure Input Method Modal fully closes before next modal opens
+    setTimeout(() => {
+      if (method === 'text') {
+        handleTextInputPress();
+      } else if (method === 'voice') {
+        handleVoiceInputPress();
+      } else if (method === 'image') {
+        handleImageInputPress();
+      }
+    }, 100);
   };
 
   const handleFabClick = () => {
@@ -817,19 +825,14 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
     setUiState('idle');
   };
 
-  const handleWeakFitNewQuestion = async () => {
-    // Move to next question
+  const handleWeakFitNewQuestion = () => {
+    // After a weak fit, behave exactly like Start:
+    // close the weak-fit modal, return to idle, then show
+    // the same input method picker used by the Start button.
     setWeakFitJustification('');
-    setError(''); // Clear any previous errors
-    setUiState('loading');
-    setLoadingMessage('Generating a new question...');
-    
-    try {
-      await getNextQuestion(false);
-    } catch (error) {
-      setError('Failed to generate new question. Please try again.');
-      setUiState('idle');
-    }
+    setError('');
+    setUiState('idle');
+    setShowInputMethodModal(true);
   };
 
   const handleReset = () => {
@@ -958,7 +961,7 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
               <View style={[styles.progressFill, { width: `${completionPercentage}%` }]} />
             </View>
             
-            {/* Large Green Start Button */}
+            {/* Large Green Start/Continue Button */}
             {mappedCategories.length < TOTAL_CATEGORIES && (
               <TouchableOpacity
                 style={styles.startButton}
@@ -967,7 +970,9 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
                 activeOpacity={0.8}
               >
                 <MaterialIcons name="play-arrow" size={28} color="white" style={styles.startButtonIcon} />
-                <Text style={styles.startButtonText}>Start</Text>
+                <Text style={styles.startButtonText}>
+                  {mappedCategories.length === 0 ? 'Start' : 'Continue'}
+                </Text>
               </TouchableOpacity>
             )}
           </Card.Content>
@@ -1072,8 +1077,9 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       <Modal
         visible={uiState === 'answering'}
         transparent
-        animationType="slide"
+        animationType="fade"
         onShow={() => console.log('Answer modal opened with prompt:', currentPrompt)}
+        onRequestClose={handleDismissAnswerModal}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1082,9 +1088,27 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
           <TouchableWithoutFeedback onPress={handleDismissAnswerModal}>
             <View style={styles.modalOverlay}>
               <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-                <View style={styles.modalContent}>
-                  <Text style={styles.questionTitle}>Question for You</Text>
-                  <Text style={styles.questionText}>{currentPrompt || '(No question loaded)'}</Text>
+                <View
+                  style={{
+                    backgroundColor: '#1e1e1e',
+                    borderRadius: 20,
+                    padding: 24,
+                    width: '100%',
+                    maxWidth: 420,
+                    maxHeight: '80%',
+                    borderWidth: 2,
+                    borderColor: 'yellow',
+                  }}
+                >
+                  <Text style={{ color: 'yellow', fontSize: 22, fontWeight: 'bold', marginBottom: 12 }}>
+                    DEBUG: ANSWER MODAL
+                  </Text>
+                  <Text style={[styles.questionTitle, { color: 'white' }]}>Question for You</Text>
+                  <ScrollView style={{ maxHeight: 200 }} contentContainerStyle={{ paddingVertical: 4 }}>
+                    <Text style={[styles.questionText, { color: 'white' }]}>
+                      {currentPrompt || '(No question loaded)'}
+                    </Text>
+                  </ScrollView>
                   
                   {selectedImage ? (
                     /* Image Answer Mode */
@@ -1371,6 +1395,7 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
         visible={showInputMethodModal}
         transparent
         animationType="fade"
+        onRequestClose={() => setShowInputMethodModal(false)}
       >
         <TouchableWithoutFeedback onPress={() => setShowInputMethodModal(false)}>
           <View style={styles.modalOverlay}>
@@ -1606,7 +1631,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 255, 0.5)', // DEBUG: bright blue overlay to confirm modal visibility
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
