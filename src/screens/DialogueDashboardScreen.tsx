@@ -22,7 +22,7 @@ import {
   FAB,
 } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
 import ConfettiCannon from 'react-native-confetti-cannon';
@@ -48,6 +48,7 @@ import {
 } from '../services/categoryStorageService';
 import { GeminiService } from '../services/geminiService';
 import { ImagePickerService } from '../services/imagePickerService';
+import { Audio } from 'expo-av';
 import ZoomableImageView from '../components/ZoomableImageView';
 import ImageEditor from '../components/ImageEditor';
 
@@ -61,7 +62,7 @@ interface Props {
   route: DialogueDashboardRouteProp;
 }
 
-type UIState = 'idle' | 'answering' | 'loading' | 'complete' | 'weak-fit';
+type UIState = 'idle' | 'answering' | 'loading' | 'complete' | 'weak-fit' | 'voice-recording';
 
 export default function DialogueDashboardScreen({ navigation }: Props) {
   const [mappedCategories, setMappedCategories] = useState<MappedCategory[]>([]);
@@ -85,6 +86,19 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
   const [tempImageUri, setTempImageUri] = useState<string | null>(null);
   const [zoomViewerVisible, setZoomViewerVisible] = useState(false);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  
+  // Input method modal state
+  const [showInputMethodModal, setShowInputMethodModal] = useState(false);
+  
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [recordingUri, setRecordingUri] = useState<string | null>(null);
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+  const [pendingVoiceRecording, setPendingVoiceRecording] = useState(false);
+  const [isAnswerFromVoice, setIsAnswerFromVoice] = useState(false);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   // FAB animation state
   const [isFabOpen, setIsFabOpen] = useState(false);
@@ -283,6 +297,10 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
           if (currentUiState === 'loading' && loadingMessage.includes('Wait while')) {
             console.log('User was waiting, showing question immediately');
             setCurrentPrompt(newQuestion);
+            if (pendingVoiceRecording) {
+              setPendingVoiceRecording(false);
+              return 'voice-recording';
+            }
             return 'answering';
           }
           return currentUiState === 'loading' ? 'idle' : currentUiState;
@@ -292,15 +310,23 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       } else {
         console.log('Setting current prompt (non-prefetch):', newQuestion);
         setCurrentPrompt(newQuestion);
-        console.log('Setting uiState to answering');
-        setUiState('answering');
+        if (pendingVoiceRecording) {
+          console.log('Setting uiState to voice-recording');
+          setPendingVoiceRecording(false);
+          setUiState('voice-recording');
+        } else {
+          console.log('Setting uiState to answering');
+          setUiState('answering');
+        }
         setLoadingMessage('');
-        console.log('UI state should now be answering, modal should appear');
+        console.log('UI state should now be set, modal should appear');
       }
     } catch (err) {
       console.error('Error getting next question:', err);
       setError('Failed to generate question. Please try again.');
       setIsPrefetching(false);
+      setPendingVoiceRecording(false);
+      setLoadingMessage('');
       setUiState('idle');
     }
   }, [interactions, mappedCategories, loadingMessage]);
@@ -407,6 +433,7 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       }
 
       setUserAnswer('');
+      setIsAnswerFromVoice(false);
 
       // Use the next question that was generated in the same API call
       // No need to prefetch separately - we already have it!
@@ -433,7 +460,27 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       console.error('Error mapping answer:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to process your answer. Please try again.';
       setError(errorMessage);
+      setUserAnswer('');
+      setIsAnswerFromVoice(false);
+      setCurrentPrompt('');
       setUiState('idle');
+    }
+  };
+
+  const handleStartButtonPress = () => {
+    if (uiState !== 'idle') return;
+    setError(''); // Clear any previous errors
+    setShowInputMethodModal(true);
+  };
+  
+  const handleInputMethodSelect = (method: 'text' | 'voice' | 'image') => {
+    setShowInputMethodModal(false);
+    if (method === 'text') {
+      handleTextInputPress();
+    } else if (method === 'voice') {
+      handleVoiceInputPress();
+    } else if (method === 'image') {
+      handleImageInputPress();
     }
   };
 
@@ -443,8 +490,7 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
   };
 
   const handleTextInputPress = () => {
-    toggleFabMenu();
-    
+    setError(''); // Clear any previous errors
     console.log('Text input selected. State:', { 
       mappedCount: mappedCategories.length, 
       hasPrefetched: !!prefetchedQuestion,
@@ -476,14 +522,41 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
   };
 
   const handleVoiceInputPress = () => {
-    toggleFabMenu();
-    // Navigate to voice analysis screen
-    navigation.navigate('VoiceAnalysis');
+    setError(''); // Clear any previous errors
+    console.log('Voice input selected. State:', { 
+      mappedCount: mappedCategories.length, 
+      hasPrefetched: !!prefetchedQuestion,
+      isPrefetching,
+      prefetchedQuestion 
+    });
+
+    if (mappedCategories.length === 0) {
+      // Start with initial prompt
+      console.log('Using initial prompt');
+      setCurrentPrompt(INITIAL_PROMPT);
+      setUiState('voice-recording');
+    } else if (prefetchedQuestion) {
+      // Use prefetched question
+      console.log('Using prefetched question:', prefetchedQuestion);
+      setCurrentPrompt(prefetchedQuestion);
+      setPrefetchedQuestion(null);
+      setUiState('voice-recording');
+    } else if (isPrefetching) {
+      // Wait for prefetch to complete
+      console.log('Still prefetching, showing loading state');
+      setPendingVoiceRecording(true);
+      setUiState('loading');
+      setLoadingMessage('Wait while the system thinks... your question is being prepared!');
+    } else if (mappedCategories.length < TOTAL_CATEGORIES) {
+      // Fallback: synchronous fetch
+      console.log('No prefetch available, fetching new question synchronously');
+      setPendingVoiceRecording(true);
+      getNextQuestion(false);
+    }
   };
 
   const handleImageInputPress = async () => {
-    toggleFabMenu();
-    
+    setError(''); // Clear any previous errors
     // First get or generate a question
     if (mappedCategories.length === 0) {
       setCurrentPrompt(INITIAL_PROMPT);
@@ -500,28 +573,138 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       return;
     }
     
-    // Wait for FAB animation to complete, then show choice dialog
-    setTimeout(() => {
-      Alert.alert(
-        'Choose Image Source',
-        'How would you like to add your image?',
-        [
-          {
-            text: 'Take Photo',
-            onPress: () => handleImageSelection(true), // Use camera
-          },
-          {
-            text: 'Choose from Gallery',
-            onPress: () => handleImageSelection(false), // Use gallery
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ],
-        { cancelable: true }
+    // Show image source selection dialog
+    Alert.alert(
+      'Choose Image Source',
+      'How would you like to add your image?',
+      [
+        {
+          text: 'Take Photo',
+          onPress: () => handleImageSelection(true), // Use camera
+        },
+        {
+          text: 'Choose from Gallery',
+          onPress: () => handleImageSelection(false), // Use gallery
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ],
+      { cancelable: true }
+    );
+  };
+
+  const startRecording = async () => {
+    try {
+      console.log('Requesting permissions..');
+      await Audio.requestPermissionsAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('Starting recording..');
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
-    }, 300);
+      recordingRef.current = recording;
+      setIsRecording(true);
+      setRecordingDuration(0);
+      
+      // Start timer
+      timerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
+      
+      console.log('Recording started');
+    } catch (err) {
+      console.error('Failed to start recording', err);
+      Alert.alert('Error', 'Failed to start recording. Please check your microphone permissions.');
+    }
+  };
+
+  const stopRecording = async () => {
+    console.log('Stopping recording..');
+    if (!recordingRef.current) return;
+    
+    try {
+      setIsRecording(false);
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      await recordingRef.current.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      });
+      
+      const uri = recordingRef.current.getURI();
+      recordingRef.current = null;
+      
+      if (uri) {
+        setRecordingUri(uri);
+        console.log('Recording stopped and stored at', uri);
+      }
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      Alert.alert('Error', 'Failed to stop recording');
+    }
+  };
+
+  const handleVoiceSubmit = async () => {
+    if (!recordingUri || !currentPrompt) {
+      Alert.alert('Error', 'No recording available');
+      return;
+    }
+
+    setIsProcessingAudio(true);
+    
+    try {
+      console.log('Transcribing audio...');
+      
+      // Transcribe audio using GeminiService
+      const transcriptionResult = await GeminiService.transcribeAudio(recordingUri);
+      
+      console.log('Transcription result:', transcriptionResult);
+      
+      if (!transcriptionResult.success || !transcriptionResult.transcript || transcriptionResult.transcript.trim().length === 0) {
+        const errorMsg = transcriptionResult.error || 'Could not transcribe your audio. Please try recording again.';
+        Alert.alert('Transcription Error', errorMsg);
+        return;
+      }
+      
+      const transcribedText = transcriptionResult.transcript.trim();
+      console.log('Transcribed text:', transcribedText);
+      
+      // Close voice recording modal and show transcribed text in answer modal
+      setRecordingUri(null);
+      setRecordingDuration(0);
+      
+      // Set the transcribed text as the user answer and show it in the answer modal
+      setUserAnswer(transcribedText);
+      setIsAnswerFromVoice(true);
+      setUiState('answering');
+      
+      // Don't process immediately - let user see and confirm the transcription first
+      
+    } catch (error) {
+      console.error('Error processing voice answer:', error);
+      let errorMessage = 'Failed to process your voice response. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Rate limit')) {
+          errorMessage = 'Rate limit exceeded. Please wait a moment and try again.';
+        } else if (error.message.includes('API key')) {
+          errorMessage = 'API key issue. Please check your configuration.';
+        }
+      }
+      
+      Alert.alert('Processing Error', errorMessage);
+    } finally {
+      setIsProcessingAudio(false);
+    }
   };
 
   const handleImageSelection = async (useCamera: boolean) => {
@@ -619,6 +802,7 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
   const handleWeakFitTryAgain = () => {
     // Re-open the answer modal with the same question
     setCurrentPrompt(savedQuestion); // Restore the original question
+    setError(''); // Clear any previous errors
     setUiState('answering');
     setWeakFitJustification('');
   };
@@ -629,12 +813,14 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
     setCurrentPrompt('');
     setUserAnswer('');
     setError('');
+    setIsAnswerFromVoice(false);
     setUiState('idle');
   };
 
   const handleWeakFitNewQuestion = async () => {
     // Move to next question
     setWeakFitJustification('');
+    setError(''); // Clear any previous errors
     setUiState('loading');
     setLoadingMessage('Generating a new question...');
     
@@ -771,6 +957,19 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${completionPercentage}%` }]} />
             </View>
+            
+            {/* Large Green Start Button */}
+            {mappedCategories.length < TOTAL_CATEGORIES && (
+              <TouchableOpacity
+                style={styles.startButton}
+                onPress={handleStartButtonPress}
+                disabled={uiState !== 'idle'}
+                activeOpacity={0.8}
+              >
+                <MaterialIcons name="play-arrow" size={28} color="white" style={styles.startButtonIcon} />
+                <Text style={styles.startButtonText}>Start</Text>
+              </TouchableOpacity>
+            )}
           </Card.Content>
         </Card>
 
@@ -936,10 +1135,32 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
                   ) : (
                     /* Text Answer Mode */
                     <>
+                      {isAnswerFromVoice && (
+                        <View style={styles.voiceTranscriptionBanner}>
+                          <Ionicons name="mic" size={16} color="#4ECDC4" />
+                          <Text style={styles.voiceTranscriptionText}>Voice transcription</Text>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setUiState('voice-recording');
+                              setUserAnswer('');
+                              setIsAnswerFromVoice(false);
+                            }}
+                            style={styles.recordAgainButton}
+                          >
+                            <Ionicons name="refresh" size={14} color="#4ECDC4" />
+                            <Text style={styles.recordAgainText}>Record again</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                       <TextInput
-                        style={styles.answerInput}
+                        style={[styles.answerInput, isAnswerFromVoice && styles.answerInputVoice]}
                         value={userAnswer}
-                        onChangeText={setUserAnswer}
+                        onChangeText={(text) => {
+                          setUserAnswer(text);
+                          if (isAnswerFromVoice) {
+                            setIsAnswerFromVoice(false); // Clear voice flag if user edits
+                          }
+                        }}
                         placeholder="Example: 'I led a team of 5 students to build a mobile app that helps local farmers track inventory. We used React Native and Firebase, and it's now used by 50+ farmers in our community.'"
                         placeholderTextColor="#999"
                         multiline
@@ -961,8 +1182,113 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Animated FAB Buttons */}
-      <View style={styles.fabContainer}>
+      {/* Voice Recording Modal */}
+      <Modal
+        visible={uiState === 'voice-recording'}
+        transparent
+        animationType="slide"
+      >
+        <TouchableWithoutFeedback onPress={async () => {
+          // Clean up recording if active
+          if (isRecording && recordingRef.current) {
+            try {
+              await recordingRef.current.stopAndUnloadAsync();
+              recordingRef.current = null;
+            } catch (error) {
+              console.error('Error stopping recording on dismiss:', error);
+            }
+          }
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          
+          setUiState('idle');
+          setIsRecording(false);
+          setRecordingUri(null);
+          setRecordingDuration(0);
+        }}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalContent}>
+                <Text style={styles.questionTitle}>Voice Response</Text>
+                <Text style={styles.questionText}>{currentPrompt || '(No question loaded)'}</Text>
+                
+                <View style={styles.voiceRecordingContainer}>
+                  {!recordingUri ? (
+                    /* Recording Interface */
+                    <>
+                      <View style={styles.recordingVisualization}>
+                        <View style={[styles.recordingCircle, isRecording && styles.recordingActive]}>
+                          <Ionicons 
+                            name={isRecording ? "stop" : "mic"} 
+                            size={48} 
+                            color={isRecording ? "white" : "#666"} 
+                          />
+                        </View>
+                      </View>
+                      
+                      {isRecording && (
+                        <Text style={styles.recordingTimer}>
+                          {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                        </Text>
+                      )}
+                      
+                      <Text style={styles.recordingInstruction}>
+                        {isRecording ? 'Recording... Tap to stop' : 'Tap to start recording'}
+                      </Text>
+                      
+                      <TouchableOpacity
+                        style={[styles.recordButton, isRecording && styles.recordButtonActive]}
+                        onPress={isRecording ? stopRecording : startRecording}
+                        disabled={isProcessingAudio}
+                      >
+                        <Text style={[styles.recordButtonText, isRecording && styles.recordButtonTextActive]}>
+                          {isRecording ? 'Stop Recording' : 'Start Recording'}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    /* Playback Interface */
+                    <>
+                      <View style={styles.playbackContainer}>
+                        <Ionicons name="checkmark-circle" size={64} color="#4CAF50" />
+                        <Text style={styles.playbackTitle}>Recording Complete!</Text>
+                        <Text style={styles.playbackDuration}>Duration: {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}</Text>
+                      </View>
+                      
+                      <View style={styles.voiceActions}>
+                        <TouchableOpacity
+                          style={styles.voiceActionButton}
+                          onPress={() => {
+                            setRecordingUri(null);
+                            setRecordingDuration(0);
+                          }}
+                        >
+                          <Text style={styles.voiceActionButtonText}>Record Again</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity
+                          style={[styles.voiceActionButton, styles.voiceActionButtonPrimary]}
+                          onPress={handleVoiceSubmit}
+                          disabled={isProcessingAudio}
+                        >
+                          <Text style={[styles.voiceActionButtonText, styles.voiceActionButtonTextPrimary]}>
+                            {isProcessingAudio ? 'Processing...' : 'Submit Recording'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Animated FAB Buttons - Hidden */}
+      <View style={[styles.fabContainer, { display: 'none' }]}>
         <View style={styles.fabInner}>
           {/* Action Button 1 - Text Input (Left) */}
           <Animated.View style={[styles.actionButton, button1Style]} pointerEvents="auto">
@@ -1017,7 +1343,6 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
               onPress={handleFabClick}
               disabled={uiState !== 'idle' || mappedCategories.length === TOTAL_CATEGORIES}
               style={[styles.mainFab, { backgroundColor: '#667eea' }]}
-              label={!isFabOpen ? "Start" : undefined}
             />
           </Animated.View>
         </View>
@@ -1040,6 +1365,66 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
           onClose={() => setZoomViewerVisible(false)}
         />
       )}
+
+      {/* Input Method Selection Modal */}
+      <Modal
+        visible={showInputMethodModal}
+        transparent
+        animationType="fade"
+      >
+        <TouchableWithoutFeedback onPress={() => setShowInputMethodModal(false)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <View style={styles.inputMethodModalContent}>
+                <Text style={styles.inputMethodTitle}>Choose Input Method</Text>
+                <Text style={styles.inputMethodSubtitle}>How would you like to provide your response?</Text>
+                
+                <View style={styles.inputMethodOptions}>
+                  <TouchableOpacity
+                    style={styles.inputMethodOption}
+                    onPress={() => handleInputMethodSelect('text')}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.inputMethodIconContainer, { backgroundColor: '#45B7D1' }]}>
+                      <Ionicons name="chatbubble" size={32} color="white" />
+                    </View>
+                    <Text style={styles.inputMethodOptionText}>Text</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={styles.inputMethodOption}
+                    onPress={() => handleInputMethodSelect('voice')}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.inputMethodIconContainer, { backgroundColor: '#4ECDC4' }]}>
+                      <Ionicons name="mic" size={32} color="white" />
+                    </View>
+                    <Text style={styles.inputMethodOptionText}>Voice</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={styles.inputMethodOption}
+                    onPress={() => handleInputMethodSelect('image')}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.inputMethodIconContainer, { backgroundColor: '#FF6B6B' }]}>
+                      <Ionicons name="camera" size={32} color="white" />
+                    </View>
+                    <Text style={styles.inputMethodOptionText}>Image</Text>
+                  </TouchableOpacity>
+                </View>
+                
+                <TouchableOpacity
+                  style={styles.inputMethodCancelButton}
+                  onPress={() => setShowInputMethodModal(false)}
+                >
+                  <Text style={styles.inputMethodCancelText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* Confetti Animation */}
       {showConfetti && (
@@ -1134,6 +1519,30 @@ const styles = StyleSheet.create({
   progressFill: {
     height: '100%',
     backgroundColor: '#667eea',
+  },
+  startButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    marginTop: 20,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  startButtonIcon: {
+    marginRight: 8,
+  },
+  startButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   errorCard: {
     marginBottom: 20,
@@ -1409,5 +1818,192 @@ const styles = StyleSheet.create({
     color: '#667eea',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  inputMethodModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 25,
+    width: '90%',
+    maxWidth: 400,
+    elevation: 5,
+  },
+  inputMethodTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  inputMethodSubtitle: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 25,
+  },
+  inputMethodOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+  },
+  inputMethodOption: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  inputMethodIconContainer: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  inputMethodOptionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  inputMethodCancelButton: {
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  inputMethodCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  voiceRecordingContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  recordingVisualization: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  recordingCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#f5f5f5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#ddd',
+  },
+  recordingActive: {
+    backgroundColor: '#ff4444',
+    borderColor: '#ff4444',
+    transform: [{ scale: 1.1 }],
+  },
+  recordingTimer: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  recordingInstruction: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  recordButton: {
+    backgroundColor: '#4ECDC4',
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+    minWidth: 150,
+    alignItems: 'center',
+  },
+  recordButtonActive: {
+    backgroundColor: '#ff4444',
+  },
+  recordButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  recordButtonTextActive: {
+    color: '#fff',
+  },
+  playbackContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  playbackTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 15,
+    marginBottom: 5,
+  },
+  playbackDuration: {
+    fontSize: 14,
+    color: '#666',
+  },
+  voiceActions: {
+    flexDirection: 'row',
+    gap: 15,
+    width: '100%',
+  },
+  voiceActionButton: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  voiceActionButtonPrimary: {
+    backgroundColor: '#4ECDC4',
+  },
+  voiceActionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  voiceActionButtonTextPrimary: {
+    color: '#fff',
+  },
+  voiceTranscriptionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fcfc',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#4ECDC4',
+  },
+  voiceTranscriptionText: {
+    fontSize: 14,
+    color: '#4ECDC4',
+    fontWeight: '600',
+    marginLeft: 6,
+    flex: 1,
+  },
+  recordAgainButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: 'rgba(78, 205, 196, 0.1)',
+  },
+  recordAgainText: {
+    fontSize: 12,
+    color: '#4ECDC4',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  answerInputVoice: {
+    borderColor: '#4ECDC4',
+    borderWidth: 2,
+    backgroundColor: '#f9fffe',
   },
 });
