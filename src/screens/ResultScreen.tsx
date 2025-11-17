@@ -15,16 +15,11 @@ import {
   Chip,
 } from 'react-native-paper';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MaterialIcons } from '@expo/vector-icons';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RouteProp } from '@react-navigation/native';
-
+import { RootStackParamList } from '../types/navigation';
 import { AnalysisResult, TranscriptAnalysis, Course } from '../types';
-
-type RootStackParamList = {
-  Home: undefined;
-  Result: { result: AnalysisResult };
-  Dashboard: undefined;
-};
 
 type ResultScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Result'>;
 type ResultScreenRouteProp = RouteProp<RootStackParamList, 'Result'>;
@@ -182,10 +177,13 @@ export default function ResultScreen({ navigation, route }: Props) {
 
   const renderActionAnalysis = (actionData: any) => (
     <ScrollView style={styles.scrollView}>
-      {/* Activity Description */}
+      {/* Activity Description Card */}
       <Card style={styles.card}>
         <Card.Content>
-          <Title style={styles.cardTitle}>🎯 Activity Identified</Title>
+          <View style={styles.cardTitleContainer}>
+            <MaterialIcons name="track-changes" size={24} color="#667eea" />
+            <Title style={styles.cardTitle}>Activity Identified</Title>
+          </View>
           <Paragraph style={styles.activityDescription}>
             {actionData.activity_description}
           </Paragraph>
@@ -238,10 +236,13 @@ export default function ResultScreen({ navigation, route }: Props) {
         </Card.Content>
       </Card>
 
-      {/* Skill Development Insights */}
+      {/* Development Insights */}
       <Card style={styles.card}>
         <Card.Content>
-          <Title style={styles.cardTitle}>💡 Development Insights</Title>
+          <View style={styles.cardTitleContainer}>
+            <MaterialIcons name="lightbulb" size={24} color="#667eea" />
+            <Title style={styles.cardTitle}>Development Insights</Title>
+          </View>
           <Paragraph style={styles.analysisText}>
             {actionData.skill_development_insights}
           </Paragraph>
@@ -251,7 +252,10 @@ export default function ResultScreen({ navigation, route }: Props) {
       {/* Growth Opportunities */}
       <Card style={styles.card}>
         <Card.Content>
-          <Title style={styles.cardTitle}>🌱 Growth Opportunities</Title>
+          <View style={styles.cardTitleContainer}>
+            <MaterialIcons name="trending-up" size={24} color="#667eea" />
+            <Title style={styles.cardTitle}>Growth Opportunities</Title>
+          </View>
           <Paragraph style={styles.analysisText}>
             {actionData.growth_opportunities}
           </Paragraph>
@@ -261,7 +265,10 @@ export default function ResultScreen({ navigation, route }: Props) {
       {/* Confidence Level */}
       <Card style={styles.card}>
         <Card.Content>
-          <Title style={styles.cardTitle}>🎯 Analysis Confidence</Title>
+          <View style={styles.cardTitleContainer}>
+            <MaterialIcons name="verified" size={24} color="#667eea" />
+            <Title style={styles.cardTitle}>Analysis Confidence</Title>
+          </View>
           <Chip 
             style={[
               styles.confidenceChip, 
@@ -278,11 +285,23 @@ export default function ResultScreen({ navigation, route }: Props) {
       </Card>
 
       {/* Follow-up Question */}
-      <Card style={styles.card}>
+      <Card 
+        style={styles.card}
+        onPress={() => navigation.navigate('FollowUpQuestion', {
+          question: generateFollowUpQuestion(actionData),
+          context: actionData,
+        })}
+      >
         <Card.Content>
-          <Title style={styles.cardTitle}>🧩 Follow-up Question</Title>
+          <View style={styles.cardTitleContainer}>
+            <MaterialIcons name="extension" size={24} color="#667eea" />
+            <Title style={styles.cardTitle}>Follow-up Question</Title>
+          </View>
           <Paragraph style={styles.analysisText}>
             {generateFollowUpQuestion(actionData)}
+          </Paragraph>
+          <Paragraph style={styles.tapHint}>
+            👆 Tap to answer this question
           </Paragraph>
         </Card.Content>
       </Card>
@@ -299,11 +318,11 @@ export default function ResultScreen({ navigation, route }: Props) {
         </Button>
         <Button
           mode="contained"
-          onPress={() => navigation.navigate('Dashboard')}
+          onPress={() => navigation.navigate('SkillsDashboard')}
           style={[styles.button, styles.primaryButton]}
           icon="view-dashboard"
         >
-          View Dashboard
+          View Skills Dashboard
         </Button>
       </View>
     </ScrollView>
@@ -479,11 +498,11 @@ export default function ResultScreen({ navigation, route }: Props) {
             
             <Button
               mode="contained"
-              onPress={() => navigation.navigate('Dashboard')}
+              onPress={() => navigation.navigate('SkillsDashboard')}
               style={[styles.actionButton, styles.dashboardButton]}
               icon="view-dashboard"
             >
-              View Dashboard
+              View Skills Dashboard
             </Button>
             
             <Button
@@ -513,12 +532,18 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   card: {
-    marginBottom: 16,
+    marginBottom: 20,
     elevation: 4,
+  },
+  cardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
   },
   title: {
     textAlign: 'center',
-    color: '#2E7D32',
+    color: '#fff',
     fontSize: 24,
     fontWeight: 'bold',
   },
@@ -672,6 +697,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: '#555',
+  },
+  tapHint: {
+    fontSize: 12,
+    color: '#667eea',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
   },
   confidenceChip: {
     marginTop: 8,

@@ -2,6 +2,8 @@ import axios from 'axios';
 import * as FileSystem from 'expo-file-system/legacy';
 import { AnalysisResult, TranscriptAnalysis } from '../types';
 import { CONFIG, getGeminiApiKey } from '../config/env';
+import { normalizeSkills, mapSkillToTaxonomy, findSkillCategory } from './skillTaxonomyService';
+import { saveIdentifiedSkills } from './userSkillsService';
 
 export class GeminiService {
   // Test method to validate API connection
@@ -253,6 +255,10 @@ Extract all visible course information accurately. If information is not clear, 
     try {
       console.log('Starting audio transcription for:', audioUri);
       
+      // Add a mandatory delay to prevent rate limiting
+      console.log('Waiting before audio transcription request...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       // Determine MIME type based on file extension
       let mimeType = 'audio/wav';
       if (audioUri.includes('.m4a')) {
@@ -266,13 +272,21 @@ Extract all visible course information accurately. If information is not clear, 
       console.log('Detected audio format:', mimeType);
       
       // Encode audio to base64
+      // Get audio file info first
+      const fileInfo = await FileSystem.getInfoAsync(audioUri);
+      const fileSizeMB = fileInfo.exists && 'size' in fileInfo ? (fileInfo.size / (1024 * 1024)).toFixed(2) : 'unknown';
+      console.log(`Audio file size: ${fileSizeMB} MB`);
+      
       const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
         encoding: 'base64' as any,
       });
       
-      console.log('Audio encoded to base64, size:', base64Audio.length, 'characters');
+      const base64SizeMB = (base64Audio.length / (1024 * 1024)).toFixed(2);
+      console.log(`Audio encoded to base64, size: ${base64Audio.length} characters (${base64SizeMB} MB)`);
       
+      // Use the same API URL as image parsing (gemini-2.0-flash) which supports audio
       const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      
       const requestBody = {
         contents: [
           {
@@ -295,27 +309,16 @@ Extract all visible course information accurately. If information is not clear, 
         }
       };
 
-      let response;
-      try {
-        response = await axios.post(apiUrl, requestBody, {
+      // Use retry logic for rate limiting
+      const makeTranscriptionRequest = async () => {
+        const response = await axios.post(apiUrl, requestBody, {
           headers: { 'Content-Type': 'application/json' },
           timeout: CONFIG.REQUEST_TIMEOUT,
         });
-      } catch (error) {
-        // Try fallback model if primary fails
-        if (axios.isAxiosError(error) && error.response?.status === 404) {
-          console.log('Primary model failed for audio, trying fallback...');
-          const fallbackUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
-          const fallbackApiUrl = `${fallbackUrl}?key=${getGeminiApiKey()}`;
-          
-          response = await axios.post(fallbackApiUrl, requestBody, {
-            headers: { 'Content-Type': 'application/json' },
-            timeout: CONFIG.REQUEST_TIMEOUT,
-          });
-        } else {
-          throw error;
-        }
-      }
+        return response;
+      };
+
+      const response = await GeminiService.retryWithBackoff(makeTranscriptionRequest);
 
       const transcript = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!transcript) {
@@ -337,7 +340,14 @@ Extract all visible course information accurately. If information is not clear, 
       let errorMessage = 'Audio transcription failed';
       if (axios.isAxiosError(error)) {
         if (error.response) {
+          // Log the full error response for debugging
+          console.error('API Error Response:', JSON.stringify(error.response.data, null, 2));
           errorMessage = `API Error: ${error.response.status} - ${error.response.statusText}`;
+          
+          // Add more specific error details if available
+          if (error.response.data?.error?.message) {
+            errorMessage += ` - ${error.response.data.error.message}`;
+          }
         } else if (error.request) {
           errorMessage = 'Network Error: No response from server';
         } else {
@@ -500,6 +510,28 @@ Analyze the image carefully and provide thoughtful insights about the skills bei
 
       const parsedData = JSON.parse(jsonMatch[0]);
       
+      // Normalize skills to match taxonomy exactly
+      if (parsedData.primary_skills && Array.isArray(parsedData.primary_skills)) {
+        const normalizedSkills = normalizeSkills(parsedData.primary_skills);
+        
+        // Log the mapping for debugging
+        console.log('Original skills:', parsedData.primary_skills);
+        console.log('Normalized skills:', normalizedSkills);
+        
+        // Replace with normalized skills
+        parsedData.primary_skills = normalizedSkills;
+        
+        // Save identified skills to AsyncStorage
+        try {
+          const categories = normalizedSkills.map(skill => findSkillCategory(skill) || 'Unknown');
+          await saveIdentifiedSkills(normalizedSkills, categories, 'image');
+          console.log('Skills saved to storage');
+        } catch (error) {
+          console.error('Error saving skills to storage:', error);
+          // Don't fail the whole operation if storage fails
+        }
+      }
+      
       return {
         success: true,
         data: parsedData,
@@ -535,6 +567,376 @@ Analyze the image carefully and provide thoughtful insights about the skills bei
         error: errorMessage,
         rawResponse: errorDetails
       };
+    }
+  }
+
+  /**
+   * Dialogue-based Category Mapping Functions
+   * Matching web app implementation
+   */
+
+  /**
+   * Helper: Retry with exponential backoff for rate limits
+   */
+  private static async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 4,
+    initialDelay: number = 2000
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+        
+        // Check if it's a rate limit error (429)
+        if (axios.isAxiosError(error) && error.response?.status === 429) {
+          const delay = initialDelay * Math.pow(2, attempt);
+          console.log(`Rate limit hit. Retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+        
+        // For other errors, throw immediately
+        throw error;
+      }
+    }
+    
+    throw lastError;
+  }
+
+  /**
+   * Synthesize next question based on conversation history
+   */
+  
+  public static async mapAnswerAndGenerateNextQuestion(
+    question: string,
+    answer: string,
+    isInitial: boolean,
+    interactions: Array<{ question: string; answer: string; mappedCategory: string }>,
+    mappedCategories: Array<{ category: string }>,
+    taxonomyString: string
+  ): Promise<{
+    category: string;
+    justification: string;
+    nextQuestion: string | null;
+  }> {
+    try {
+      // Add mandatory delay to avoid hitting rate limits
+      console.log('Waiting 1.5 seconds before combined API call...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      
+      const mappedCategoryNames = mappedCategories.map(c => c.category);
+      const mappedCategoriesList = mappedCategoryNames.join(', ');
+      
+      const history = interactions
+        .map(i => `Q: ${i.question} | A: ${i.answer} | Mapped: ${i.mappedCategory}`)
+        .join('\n');
+      
+      let systemInstruction: string;
+      let userPrompt: string;
+      
+      if (isInitial) {
+        systemInstruction = `You are a sophisticated trait mapper and question generator. Your task is to:
+1. Analyze the user's answer and map it to the single most applicable category from the provided taxonomy. **Crucially, you must only map to a real category if the answer obviously and rigorously fits. If the fit is weak, uncertain, or the answer is generic, you MUST choose the 'NO_MAP_WEAK_FIT' category.**
+2. Generate a thoughtful follow-up question that might help identify additional categories.
+
+You MUST respond with a valid JSON object with these fields:
+- "category": the exact category name from the taxonomy
+- "justification": a short, two-sentence summary (max 30 words) explaining why this user's answer maps to the chosen category
+- "nextQuestion": a new question to help identify more categories (or null if all categories are mapped)`;
+
+        userPrompt = `I have been asked "${question}". My answer is "${answer}".
+
+TAXONOMY:
+${taxonomyString}
+
+Analyze my answer, map it to the most appropriate category, and generate a follow-up question to explore other potential categories.`;
+      } else {
+        systemInstruction = `You are a sophisticated trait mapper and question generator. Your task is to:
+1. Analyze the user's answer and map it to the single most applicable category from the provided taxonomy that is STILL NOT MAPPED. **Crucially, you must only map to a real category if the answer obviously and rigorously fits. If the fit is weak, uncertain, or the answer is generic, you MUST choose the 'NO_MAP_WEAK_FIT' category.**
+2. Generate a thoughtful follow-up question based on conversation history that might help identify additional unmapped categories.
+
+You MUST respond with a valid JSON object with these fields:
+- "category": the exact category name from the taxonomy (must not be in already-mapped list)
+- "justification": a short, two-sentence summary (max 30 words) explaining why this user's answer maps to the chosen category
+- "nextQuestion": a new question to help identify more categories (or null if all categories are mapped)`;
+
+        userPrompt = `I have been asked "${question}". My answer is "${answer}".
+
+CONVERSATION HISTORY:
+${history}
+
+TAXONOMY:
+${taxonomyString}
+
+CATEGORIES ALREADY MAPPED: ${mappedCategoriesList}
+
+Analyze my answer, map it to an unmapped category (or NO_MAP_WEAK_FIT), and generate a follow-up question that uses context from our conversation.`;
+      }
+
+      console.log('Combined API call: mapping answer + generating next question...');
+      
+      const requestBody = {
+        contents: [
+          {
+            parts: [{ text: systemInstruction + '\n\n' + userPrompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.5, // Balanced between mapping (0.3) and question generation (0.9)
+          maxOutputTokens: 500, // Enough for both tasks
+          responseMimeType: 'application/json',
+        }
+      };
+
+      // Use retry logic with exponential backoff
+      const response = await this.retryWithBackoff(async () => {
+        return await axios.post(apiUrl, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+        });
+      });
+
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+        throw new Error('No response from API');
+      }
+
+      console.log('Raw combined response:', text);
+      
+      // Parse JSON response
+      const jsonResponse = JSON.parse(text);
+      
+      if (!jsonResponse.category || !jsonResponse.justification) {
+        throw new Error('Invalid response format from API');
+      }
+
+      console.log('Mapped to category:', jsonResponse.category);
+      console.log('Justification:', jsonResponse.justification);
+      console.log('Next question:', jsonResponse.nextQuestion);
+      
+      return {
+        category: jsonResponse.category,
+        justification: jsonResponse.justification,
+        nextQuestion: jsonResponse.nextQuestion || null
+      };
+      
+    } catch (error) {
+      console.error('Error in combined mapping + question generation:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+        } else if (error.response?.status === 403) {
+          throw new Error('API key invalid or missing. Check your .env file.');
+        } else if (error.response) {
+          throw new Error(`API Error: ${error.response.status} - ${error.response.statusText}`);
+        } else if (error.request) {
+          throw new Error('Network error. Please check your internet connection.');
+        }
+      }
+      
+      if (error instanceof Error && error.message.includes('JSON')) {
+        throw new Error('Failed to parse API response. Please try again.');
+      }
+      
+      throw new Error('Failed to process answer and generate question');
+    }
+  }
+
+  public static async synthesizeNextQuestion(
+    interactions: Array<{ question: string; answer: string; mappedCategory: string }>,
+    mappedCategories: Array<{ category: string }>,
+    taxonomyString: string
+  ): Promise<string> {
+    try {
+      const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      
+      const history = interactions
+        .map(i => `Q: ${i.question} | A: ${i.answer} | Mapped: ${i.mappedCategory}`)
+        .join('\n');
+      
+      const mappedCategoriesList = mappedCategories.map(c => c.category).join(', ');
+      
+      const prompt = `Based on all our interactions so far, the taxonomy (including the NO_OP category as a mapping option), and the categories mapped to me so far, synthesize a new question that might help tease out which additional categories might map to me. You may (optionally) use what you've learned about me in previous answers as context in the question if it helps.
+      
+HISTORY:
+${history}
+
+TAXONOMY:
+${taxonomyString}
+
+CATEGORIES MAPPED: ${mappedCategoriesList}
+      
+RESPOND ONLY with the text of the new question. Do not include any other text, explanation, or formatting.`;
+
+      console.log('Synthesizing next question...');
+      
+      const requestBody = {
+        contents: [
+          {
+            parts: [{ text: prompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 200,
+        }
+      };
+
+      // Use retry logic with exponential backoff
+      const response = await this.retryWithBackoff(async () => {
+        return await axios.post(apiUrl, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+        });
+      });
+
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+        throw new Error('No question generated from API');
+      }
+
+      const question = text.trim();
+      console.log('Synthesized question:', question);
+      
+      return question;
+      
+    } catch (error) {
+      console.error('Error synthesizing question:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+        } else if (error.response?.status === 403) {
+          throw new Error('API key invalid or missing. Check your .env file.');
+        } else if (error.response) {
+          throw new Error(`API Error: ${error.response.status} - ${error.response.statusText}`);
+        } else if (error.request) {
+          throw new Error('Network error. Please check your internet connection.');
+        }
+      }
+      
+      throw new Error('Failed to generate next question');
+    }
+  }
+
+  /**
+   * Map user answer to category with NO_OP support
+   */
+  public static async mapAnswerToCategory(
+    question: string,
+    answer: string,
+    isInitial: boolean,
+    taxonomyString: string,
+    mappedCategories: Array<{ category: string }>
+  ): Promise<{
+    category: string;
+    justification: string;
+  }> {
+    try {
+      // Add mandatory delay to avoid hitting rate limits
+      console.log('Waiting 1.5 seconds before mapping to avoid rate limits...');
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const apiUrl = `${CONFIG.GEMINI_API_URL}?key=${getGeminiApiKey()}`;
+      
+      const systemInstruction = `You are a sophisticated trait mapper. Your task is to analyze user input and map it to the single most applicable category from the provided taxonomy. **Crucially, you must only map to a real category if the answer obviously and rigorously fits. If the fit is weak, uncertain, or the answer is generic, you MUST choose the 'NO_MAP_WEAK_FIT' category.** The taxonomy includes descriptions and sample experience stamps to guide your decision. You MUST respond with a valid JSON object with fields: "category" (the exact category name) and "justification" (a short, two-sentence summary, max 30 words, explaining why this user's answer maps to the chosen category).`;
+      
+      let userPrompt: string;
+      
+      if (isInitial) {
+        userPrompt = `I have been asked "${question}". My answer to the question is "${answer}". 
+Take this information along with the full taxonomy below, and decide which category in the taxonomy is most likely applicable to me.
+
+TAXONOMY:
+${taxonomyString}`;
+      } else {
+        const mappedCategoryNames = mappedCategories.map(c => c.category);
+        const mappedCategoriesList = mappedCategoryNames.join(', ');
+        
+        userPrompt = `I have been asked "${question}". My answer to the question is "${answer}". 
+Take this information along with the full taxonomy, the list of categories already mapped to me, and decide which category in the taxonomy that is STILL NOT MAPPED TO ME is most likely applicable to me based on the last question/answer, or choose 'NO_MAP_WEAK_FIT' if the mapping is not rigorous.
+
+TAXONOMY:
+${taxonomyString}
+
+CATEGORIES ALREADY MAPPED: ${mappedCategoriesList}`;
+      }
+
+      console.log('Mapping answer to category...');
+      
+      const requestBody = {
+        contents: [
+          {
+            parts: [{ text: systemInstruction + '\n\n' + userPrompt }]
+          }
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 300,
+          responseMimeType: 'application/json',
+        }
+      };
+
+      // Use retry logic with exponential backoff
+      const response = await this.retryWithBackoff(async () => {
+        return await axios.post(apiUrl, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+        });
+      });
+
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+        throw new Error('No mapping response from API');
+      }
+
+      console.log('Raw mapping response:', text);
+      
+      // Parse JSON response
+      const jsonResponse = JSON.parse(text);
+      
+      if (!jsonResponse.category || !jsonResponse.justification) {
+        throw new Error('Invalid response format from API');
+      }
+
+      console.log('Mapped to category:', jsonResponse.category);
+      console.log('Justification:', jsonResponse.justification);
+      
+      return {
+        category: jsonResponse.category,
+        justification: jsonResponse.justification
+      };
+      
+    } catch (error) {
+      console.error('Error mapping answer to category:', error);
+      
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          throw new Error('Rate limit exceeded. Please wait a moment and try again.');
+        } else if (error.response?.status === 403) {
+          throw new Error('API key invalid or missing. Check your .env file.');
+        } else if (error.response) {
+          throw new Error(`API Error: ${error.response.status} - ${error.response.statusText}`);
+        } else if (error.request) {
+          throw new Error('Network error. Please check your internet connection.');
+        }
+      }
+      
+      if (error instanceof Error && error.message.includes('JSON')) {
+        throw new Error('Failed to parse API response. Please try again.');
+      }
+      
+      throw new Error('Failed to map answer to category');
     }
   }
 }

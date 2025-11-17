@@ -72,7 +72,11 @@ export default function LoginScreen({ navigation }: Props) {
               contentStyle={styles.primaryContent}
               labelStyle={styles.primaryLabel}
               disabled={!formValid}
-              onPress={() => Alert.alert('Not implemented', 'Email sign-in will be added later.')}
+              onPress={() => {
+                // TODO: Implement actual authentication
+                // For now, navigate directly to dashboard
+                navigation.replace('DialogueDashboard');
+              }}
             >
               Sign in
             </Button>
@@ -82,7 +86,7 @@ export default function LoginScreen({ navigation }: Props) {
               style={[styles.pill, styles.secondaryContained]}
               contentStyle={styles.primaryContent}
               labelStyle={styles.secondaryLabel}
-              onPress={() => navigation.replace('Welcome')}
+              onPress={() => navigation.replace('DialogueDashboard')}
             >
               Continue without signing in
             </Button>

@@ -8,8 +8,11 @@ export type RootStackParamList = {
   Result: { result: AnalysisResult };
   Blue: undefined;
   Dashboard: undefined;
-  VoiceAnalysis: undefined;
+  SkillsDashboard: undefined;
+  DialogueDashboard: undefined;
+  VoiceAnalysis: { question?: string; context?: any } | undefined;
   TextAnalysis: undefined;
+  FollowUpQuestion: { question: string; context?: any };
 };
 
 

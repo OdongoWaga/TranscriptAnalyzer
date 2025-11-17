@@ -11,6 +11,9 @@ import BlueScreen from './src/screens/BlueScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import VoiceAnalysisScreen from './src/screens/VoiceAnalysisScreen';
 import TextAnalysisScreen from './src/screens/TextAnalysisScreen';
+import FollowUpQuestionScreen from './src/screens/FollowUpQuestionScreen';
+import SkillsDashboardScreen from './src/screens/SkillsDashboardScreen';
+import DialogueDashboardScreen from './src/screens/DialogueDashboardScreen';
 import { RootStackParamList } from './src/types/navigation';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
@@ -70,6 +73,16 @@ export default function App() {
             options={{ title: 'Achievement Dashboard' }}
           />
           <Stack.Screen 
+            name="SkillsDashboard" 
+            component={SkillsDashboardScreen} 
+            options={{ title: 'Skills Dashboard' }}
+          />
+          <Stack.Screen 
+            name="DialogueDashboard" 
+            component={DialogueDashboardScreen} 
+            options={{ title: 'Skills Passport' }}
+          />
+          <Stack.Screen 
             name="VoiceAnalysis" 
             component={VoiceAnalysisScreen} 
             options={{ title: 'Voice Analysis' }}
@@ -78,6 +91,11 @@ export default function App() {
             name="TextAnalysis" 
             component={TextAnalysisScreen} 
             options={{ title: 'Text Analysis' }}
+          />
+          <Stack.Screen 
+            name="FollowUpQuestion" 
+            component={FollowUpQuestionScreen} 
+            options={{ title: 'Answer Follow-up Question' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

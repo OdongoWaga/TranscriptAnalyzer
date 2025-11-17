@@ -12,13 +12,16 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../types/navigation';
 import { GeminiService } from '../services/geminiService';
 
 type VoiceAnalysisScreenNavigationProp = StackNavigationProp<RootStackParamList, 'VoiceAnalysis'>;
+type VoiceAnalysisScreenRouteProp = RouteProp<RootStackParamList, 'VoiceAnalysis'>;
 
 interface Props {
   navigation: VoiceAnalysisScreenNavigationProp;
+  route: VoiceAnalysisScreenRouteProp;
 }
 
 const SKILLS_TAXONOMY = {
@@ -56,7 +59,9 @@ const SKILLS_TAXONOMY = {
   ]
 };
 
-export default function VoiceAnalysisScreen({ navigation }: Props) {
+export default function VoiceAnalysisScreen({ navigation, route }: Props) {
+  const { question, context } = route.params || {};
+  
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState<string>('');
@@ -156,8 +161,30 @@ export default function VoiceAnalysisScreen({ navigation }: Props) {
 
       setTranscript(transcriptionResult.transcript);
       
-      // Now analyze the transcript using the skills taxonomy
+      // If we came from a follow-up question (DialogueDashboard flow)
+      if (question) {
+        // Show success message and navigate back to DialogueDashboard
+        Alert.alert(
+          'Voice Recording Complete!',
+          'Your response has been transcribed. Returning to dashboard...',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('DialogueDashboard'),
+            },
+          ]
+        );
+        setIsProcessing(false);
+        return;
+      }
+      
+      // Otherwise, continue with normal analysis for standalone voice analysis
       await analyzeTranscriptWithTaxonomy(transcriptionResult.transcript);
+      
+      // After analysis is complete, automatically navigate to DialogueDashboard
+      setTimeout(() => {
+        navigation.navigate('DialogueDashboard');
+      }, 1500);
       
     } catch (error) {
       console.error('Error processing audio:', error);
@@ -268,7 +295,7 @@ Format your response as a thoughtful analysis that helps them understand their s
         <View style={styles.header}>
           <Text style={styles.title}>Voice Analysis</Text>
           <Text style={styles.subtitle}>
-            Tell me about what you do when you lose track of time
+            {question || 'Tell me about what you do when you lose track of time'}
           </Text>
         </View>
 
@@ -322,10 +349,22 @@ Format your response as a thoughtful analysis that helps them understand their s
         )}
 
         {(analysis || transcript) && (
-          <Card style={styles.resultCard}>
+          <Card 
+            style={styles.resultCard}
+            onPress={() => navigation.navigate('FollowUpQuestion', {
+              question: generateFollowUpQuestion(),
+              context: { transcript, analysis },
+            })}
+          >
             <Card.Content>
-              <Title style={styles.sectionTitle}>🧩 Follow-up Question</Title>
+              <View style={styles.cardTitleContainer}>
+                <MaterialIcons name="extension" size={22} color="#667eea" />
+                <Title style={styles.sectionTitle}>Follow-up Question</Title>
+              </View>
               <Paragraph style={styles.analysisText}>{generateFollowUpQuestion()}</Paragraph>
+              <Paragraph style={styles.tapHint}>
+                👆 Tap to answer this question
+              </Paragraph>
             </Card.Content>
           </Card>
         )}
@@ -462,6 +501,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     elevation: 4,
   },
+  cardTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -477,6 +522,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     color: '#333',
+  },
+  tapHint: {
+    fontSize: 12,
+    color: '#667eea',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
   },
   skillCategory: {
     marginBottom: 15,
