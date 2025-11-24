@@ -19,7 +19,8 @@
         "NSMicrophoneUsageDescription": "We use the mic to transcribe your speech on device.",
         "NSSpeechRecognitionUsageDescription": "We use speech recognition to transcribe audio on device."
       },
-      "bundleIdentifier": "com.anonymous.TranscriptAnalyzer"
+      "bundleIdentifier": "com.anonymous.TranscriptAnalyzer",
+      "runtimeVersion": "1.0.0"
     },
     "android": {
       "adaptiveIcon": {
@@ -31,8 +32,15 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -51,6 +59,9 @@
         "projectId": "924919f0-0969-4fa0-b777-536596a3dce8"
       }
     },
-    "owner": "wagamama"
+    "owner": "wagamama",
+    "updates": {
+      "url": "https://u.expo.dev/924919f0-0969-4fa0-b777-536596a3dce8"
+    }
   }
 }
