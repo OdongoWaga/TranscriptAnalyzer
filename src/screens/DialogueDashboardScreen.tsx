@@ -151,6 +151,17 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
     console.log('State changed:', { uiState, currentPrompt: currentPrompt.substring(0, 50) + '...', hasPrompt: !!currentPrompt });
   }, [uiState, currentPrompt]);
 
+  // Debug: Specifically track Answer modal visibility
+  useEffect(() => {
+    const shouldShowAnswerModal = uiState === 'answering';
+    console.log('🔴 Answer Modal should be visible:', shouldShowAnswerModal, {
+      uiState,
+      hasCurrentPrompt: !!currentPrompt,
+      promptLength: currentPrompt.length,
+      showInputMethodModal,
+    });
+  }, [uiState, currentPrompt, showInputMethodModal]);
+
   // FAB animation functions
   const toggleFabMenu = () => {
     const toValue = isFabOpen ? 0 : 1;
@@ -315,16 +326,20 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       } else {
         console.log('Setting current prompt (non-prefetch):', newQuestion);
         setCurrentPrompt(newQuestion);
-        if (pendingVoiceRecording) {
-          console.log('Setting uiState to voice-recording');
-          setPendingVoiceRecording(false);
-          setUiState('voice-recording');
-        } else {
-          console.log('Setting uiState to answering');
-          setUiState('answering');
-        }
         setLoadingMessage('');
-        console.log('UI state should now be set, modal should appear');
+        
+        // Small delay to ensure loading modal closes before answer modal opens
+        setTimeout(() => {
+          if (pendingVoiceRecording) {
+            console.log('Setting uiState to voice-recording');
+            setPendingVoiceRecording(false);
+            setUiState('voice-recording');
+          } else {
+            console.log('Setting uiState to answering');
+            setUiState('answering');
+          }
+          console.log('UI state should now be set, modal should appear');
+        }, 100);
       }
     } catch (err) {
       console.error('Error getting next question:', err);
@@ -334,7 +349,7 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       setLoadingMessage('');
       setUiState('idle');
     }
-  }, [interactions, mappedCategories, loadingMessage]);
+  }, [interactions, mappedCategories, pendingVoiceRecording]);
 
   const mapAnswerToCategory = async (question: string, answer: string) => {
     setUiState('loading');
@@ -472,24 +487,60 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
     }
   };
 
-  const handleStartButtonPress = () => {
+  const handleStartButtonPress = async () => {
     if (uiState !== 'idle') return;
     setError(''); // Clear any previous errors
-    setShowInputMethodModal(true);
+    
+    // If we need a question and don't have one, synthesize it first
+    if (mappedCategories.length > 0 && !prefetchedQuestion && !isPrefetching) {
+      console.log('Need to synthesize question before showing input method modal');
+      setUiState('loading');
+      setLoadingMessage('Synthesizing a new question...');
+      
+      try {
+        const taxonomyString = getTaxonomyString();
+        const newQuestion = await GeminiService.synthesizeNextQuestion(
+          interactions,
+          mappedCategories,
+          taxonomyString
+        );
+        
+        console.log('Question synthesized, storing as prefetched:', newQuestion);
+        setPrefetchedQuestion(newQuestion);
+        setUiState('idle');
+        setLoadingMessage('');
+        
+        // Small delay before showing input method modal
+        setTimeout(() => {
+          setShowInputMethodModal(true);
+        }, 100);
+      } catch (err) {
+        console.error('Error synthesizing question:', err);
+        setError('Failed to generate question. Please try again.');
+        setUiState('idle');
+        setLoadingMessage('');
+      }
+    } else {
+      // Question ready or it's first question (INITIAL_PROMPT)
+      setShowInputMethodModal(true);
+    }
   };
   
-  const handleInputMethodSelect = (method: 'text' | 'voice' | 'image') => {
+  const handleInputMethodSelect = async (method: 'text' | 'voice' | 'image') => {
+    console.log('handleInputMethodSelect called with method:', method);
     setShowInputMethodModal(false);
-    // Small delay to ensure Input Method Modal fully closes before next modal opens
-    setTimeout(() => {
-      if (method === 'text') {
-        handleTextInputPress();
-      } else if (method === 'voice') {
-        handleVoiceInputPress();
-      } else if (method === 'image') {
-        handleImageInputPress();
-      }
-    }, 100);
+    
+    // Wait for state to update and next frame to render
+    await new Promise(resolve => setTimeout(resolve, 150));
+    
+    console.log('Executing input method handler after delay');
+    if (method === 'text') {
+      handleTextInputPress();
+    } else if (method === 'voice') {
+      handleVoiceInputPress();
+    } else if (method === 'image') {
+      handleImageInputPress();
+    }
   };
 
   const handleFabClick = () => {
@@ -502,7 +553,6 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
     console.log('Text input selected. State:', { 
       mappedCount: mappedCategories.length, 
       hasPrefetched: !!prefetchedQuestion,
-      isPrefetching,
       prefetchedQuestion 
     });
 
@@ -510,22 +560,17 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       // Start with initial prompt
       console.log('Using initial prompt');
       setCurrentPrompt(INITIAL_PROMPT);
-      setUiState('answering');
+      setTimeout(() => setUiState('answering'), 100);
     } else if (prefetchedQuestion) {
-      // Use prefetched question
+      // Use prefetched question (should always be available now)
       console.log('Using prefetched question:', prefetchedQuestion);
       setCurrentPrompt(prefetchedQuestion);
       setPrefetchedQuestion(null);
-      setUiState('answering');
-    } else if (isPrefetching) {
-      // Wait for prefetch to complete
-      console.log('Still prefetching, showing loading state');
-      setUiState('loading');
-      setLoadingMessage('Wait while the system thinks... your question is being prepared!');
-    } else if (mappedCategories.length < TOTAL_CATEGORIES) {
-      // Fallback: synchronous fetch
-      console.log('No prefetch available, fetching new question synchronously');
-      getNextQuestion(false);
+      setTimeout(() => setUiState('answering'), 100);
+    } else {
+      // This shouldn't happen now, but fallback to error
+      console.error('No question available when text input was selected');
+      setError('No question available. Please try again.');
     }
   };
 
@@ -534,7 +579,6 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
     console.log('Voice input selected. State:', { 
       mappedCount: mappedCategories.length, 
       hasPrefetched: !!prefetchedQuestion,
-      isPrefetching,
       prefetchedQuestion 
     });
 
@@ -542,30 +586,24 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       // Start with initial prompt
       console.log('Using initial prompt');
       setCurrentPrompt(INITIAL_PROMPT);
-      setUiState('voice-recording');
+      setTimeout(() => setUiState('voice-recording'), 100);
     } else if (prefetchedQuestion) {
-      // Use prefetched question
+      // Use prefetched question (should always be available now)
       console.log('Using prefetched question:', prefetchedQuestion);
       setCurrentPrompt(prefetchedQuestion);
       setPrefetchedQuestion(null);
-      setUiState('voice-recording');
-    } else if (isPrefetching) {
-      // Wait for prefetch to complete
-      console.log('Still prefetching, showing loading state');
-      setPendingVoiceRecording(true);
-      setUiState('loading');
-      setLoadingMessage('Wait while the system thinks... your question is being prepared!');
-    } else if (mappedCategories.length < TOTAL_CATEGORIES) {
-      // Fallback: synchronous fetch
-      console.log('No prefetch available, fetching new question synchronously');
-      setPendingVoiceRecording(true);
-      getNextQuestion(false);
+      setTimeout(() => setUiState('voice-recording'), 100);
+    } else {
+      // This shouldn't happen now, but fallback to error
+      console.error('No question available when voice input was selected');
+      setError('No question available. Please try again.');
     }
   };
 
   const handleImageInputPress = async () => {
     setError(''); // Clear any previous errors
-    // First get or generate a question
+    
+    // Get the question
     if (mappedCategories.length === 0) {
       setCurrentPrompt(INITIAL_PROMPT);
       setSavedQuestion(INITIAL_PROMPT);
@@ -573,11 +611,9 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       setCurrentPrompt(prefetchedQuestion);
       setSavedQuestion(prefetchedQuestion);
       setPrefetchedQuestion(null);
-    } else if (!currentPrompt) {
-      // Need to fetch a question first
-      setUiState('loading');
-      setLoadingMessage('Preparing your question...');
-      await getNextQuestion(false);
+    } else {
+      console.error('No question available when image input was selected');
+      setError('No question available. Please try again.');
       return;
     }
     
@@ -686,16 +722,17 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       const transcribedText = transcriptionResult.transcript.trim();
       console.log('Transcribed text:', transcribedText);
       
-      // Close voice recording modal and show transcribed text in answer modal
+      // Save the question and transcribed answer
+      const question = currentPrompt;
+      const answer = transcribedText;
+      
+      // Close voice recording modal
       setRecordingUri(null);
       setRecordingDuration(0);
+      setCurrentPrompt('');
       
-      // Set the transcribed text as the user answer and show it in the answer modal
-      setUserAnswer(transcribedText);
-      setIsAnswerFromVoice(true);
-      setUiState('answering');
-      
-      // Don't process immediately - let user see and confirm the transcription first
+      // Process the voice answer directly
+      await mapAnswerToCategory(question, answer)
       
     } catch (error) {
       console.error('Error processing voice answer:', error);
@@ -825,14 +862,46 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
     setUiState('idle');
   };
 
-  const handleWeakFitNewQuestion = () => {
-    // After a weak fit, behave exactly like Start:
-    // close the weak-fit modal, return to idle, then show
-    // the same input method picker used by the Start button.
+  const handleWeakFitNewQuestion = async () => {
+    // After a weak fit, synthesize a new question then show input method modal
     setWeakFitJustification('');
     setError('');
+    
+    // Close weak-fit modal first
     setUiState('idle');
-    setShowInputMethodModal(true);
+    
+    // Wait for weak-fit modal to close before opening loading modal
+    await new Promise(resolve => setTimeout(resolve, 150));
+    
+    setUiState('loading');
+    setLoadingMessage('Synthesizing a new question...');
+    
+    try {
+      const taxonomyString = getTaxonomyString();
+      const newQuestion = await GeminiService.synthesizeNextQuestion(
+        interactions,
+        mappedCategories,
+        taxonomyString
+      );
+      
+      console.log('Weak-fit: Question synthesized, storing as prefetched:', newQuestion);
+      setPrefetchedQuestion(newQuestion);
+      setLoadingMessage('');
+      
+      // Wait for loading modal to close before showing input method modal
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      setUiState('idle');
+      
+      setTimeout(() => {
+        setShowInputMethodModal(true);
+      }, 100);
+    } catch (err) {
+      console.error('Error synthesizing question after weak-fit:', err);
+      setError('Failed to generate question. Please try again.');
+      setUiState('idle');
+      setLoadingMessage('');
+    }
   };
 
   const handleReset = () => {
@@ -1078,7 +1147,7 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
         visible={uiState === 'answering'}
         transparent
         animationType="fade"
-        onShow={() => console.log('Answer modal opened with prompt:', currentPrompt)}
+        onShow={() => console.log('✅ Answer modal onShow callback fired with prompt:', currentPrompt)}
         onRequestClose={handleDismissAnswerModal}
       >
         <KeyboardAvoidingView
@@ -1088,24 +1157,10 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
           <TouchableWithoutFeedback onPress={handleDismissAnswerModal}>
             <View style={styles.modalOverlay}>
               <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-                <View
-                  style={{
-                    backgroundColor: '#1e1e1e',
-                    borderRadius: 20,
-                    padding: 24,
-                    width: '100%',
-                    maxWidth: 420,
-                    maxHeight: '80%',
-                    borderWidth: 2,
-                    borderColor: 'yellow',
-                  }}
-                >
-                  <Text style={{ color: 'yellow', fontSize: 22, fontWeight: 'bold', marginBottom: 12 }}>
-                    DEBUG: ANSWER MODAL
-                  </Text>
-                  <Text style={[styles.questionTitle, { color: 'white' }]}>Question for You</Text>
+                <View style={styles.modalContent}>
+                  <Text style={styles.questionTitle}>Question for You</Text>
                   <ScrollView style={{ maxHeight: 200 }} contentContainerStyle={{ paddingVertical: 4 }}>
-                    <Text style={[styles.questionText, { color: 'white' }]}>
+                    <Text style={styles.questionText}>
                       {currentPrompt || '(No question loaded)'}
                     </Text>
                   </ScrollView>
@@ -1210,7 +1265,26 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
       <Modal
         visible={uiState === 'voice-recording'}
         transparent
-        animationType="slide"
+        animationType="fade"
+        onRequestClose={async () => {
+          // Clean up recording if active
+          if (isRecording && recordingRef.current) {
+            try {
+              await recordingRef.current.stopAndUnloadAsync();
+              recordingRef.current = null;
+            } catch (error) {
+              console.error('Error stopping recording on dismiss:', error);
+            }
+          }
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          setUiState('idle');
+          setIsRecording(false);
+          setRecordingUri(null);
+          setRecordingDuration(0);
+        }}
       >
         <TouchableWithoutFeedback onPress={async () => {
           // Clean up recording if active
@@ -1631,7 +1705,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 255, 0.5)', // DEBUG: bright blue overlay to confirm modal visibility
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
