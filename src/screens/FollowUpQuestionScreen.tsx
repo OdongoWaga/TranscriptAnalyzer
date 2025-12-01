@@ -367,6 +367,7 @@ export default function FollowUpQuestionScreen({ navigation, route }: Props) {
                 style={styles.textInput}
                 outlineColor="#6C5CE7"
                 activeOutlineColor="#667eea"
+                autoCorrect={true}
               />
               <Button
                 mode="contained"

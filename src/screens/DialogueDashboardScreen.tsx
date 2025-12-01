@@ -1243,6 +1243,7 @@ export default function DialogueDashboardScreen({ navigation }: Props) {
                         placeholder="Example: 'I led a team of 5 students to build a mobile app that helps local farmers track inventory. We used React Native and Firebase, and it's now used by 50+ farmers in our community.'"
                         placeholderTextColor="#999"
                         multiline
+                        autoCorrect={true}
                         numberOfLines={4}
                         textAlignVertical="top"
                       />

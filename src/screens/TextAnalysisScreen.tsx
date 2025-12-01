@@ -218,6 +218,7 @@ Analyze the text carefully and provide thoughtful insights about the skills bein
                     outline: '#ccc',
                   }
                 }}
+                autoCorrect={true}
               />
               
               <View style={styles.buttonContainer}>
