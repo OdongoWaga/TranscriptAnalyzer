@@ -12,15 +12,15 @@ export class ImagePickerService {
     try {
       console.log('Converting image to JPEG format:', imageUri);
       
-      // Manipulate and convert to JPEG
+      // Manipulate and convert to JPEG with aggressive compression to reduce tokens
       const manipulatedImage = await ImageManipulator.manipulateAsync(
         imageUri,
         [
-          // Resize to max 2048px width to keep file size reasonable
-          { resize: { width: 2048 } }
+          // Resize to max 1024px on longest side to significantly reduce token usage
+          { resize: { width: CONFIG.MAX_IMAGE_DIMENSION } }
         ],
         {
-          compress: CONFIG.IMAGE_QUALITY,
+          compress: CONFIG.IMAGE_QUALITY, // 0.6 for good balance of quality and token usage
           format: ImageManipulator.SaveFormat.JPEG, // Force JPEG format
         }
       );
