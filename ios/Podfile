@@ -14,6 +14,9 @@ prepare_react_native_project!
 
 target 'TranscriptAnalyzer' do
   use_expo_modules!
+  
+  # Enable modular headers for Firebase compatibility
+  use_modular_headers!
 
   if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
     config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"];
@@ -30,6 +33,8 @@ target 'TranscriptAnalyzer' do
 
   config = use_native_modules!(config_command)
 
+  # Force static linkage for Firebase
+  use_frameworks! :linkage => :static
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
 
@@ -48,5 +53,12 @@ target 'TranscriptAnalyzer' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
+    
+    # Fix for Firebase modular headers
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      end
+    end
   end
 end
